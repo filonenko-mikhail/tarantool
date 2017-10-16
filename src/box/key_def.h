@@ -153,6 +153,13 @@ typedef uint32_t (*tuple_hash_t)(const struct tuple *tuple,
 typedef uint32_t (*key_hash_t)(const char *key,
 				struct key_def *key_def);
 
+/** @copydoc tuple_hint() */
+typedef uint64_t (*tuple_hint_t)(const struct tuple *tuple,
+				 struct key_def *key_def);
+
+/** @copydoc key_hint() */
+typedef uint64_t (*key_hint_t)(const char *key, struct key_def *key_def);
+
 /* Definition of a multipart key. */
 struct key_def {
 	/** @see tuple_compare() */
@@ -167,6 +174,10 @@ struct key_def {
 	tuple_hash_t tuple_hash;
 	/** @see key_hash() */
 	key_hash_t key_hash;
+	/** @see tuple_hint() */
+	tuple_hint_t tuple_hint;
+	/** @see key_hint() */
+	key_hint_t key_hint;
 	/**
 	 * Minimal part count which always is unique. For example,
 	 * if a secondary index is unique, then
@@ -622,6 +633,39 @@ static inline uint32_t
 key_hash(const char *key, struct key_def *key_def)
 {
 	return key_def->key_hash(key, key_def);
+}
+
+ /*
+ * Get a comparison hint of a tuple.
+ * Hint is such a function h(tuple) in terms of particular key_def that
+ * has follows rules:
+ * if h(t1) < h(t2) then t1 < t2;
+ * if h(t1) > h(t2) then t1 > t2;
+ * if t1 == t2 then h(t1) == h(t2);
+ * These rules means that instead of direct tuple vs tuple (or tuple vs key)
+ * comparison one may compare theirs hints first; and only if theirs hints
+ * are equal compare the tuples themselves.
+ * @param tuple - tuple to get hint of.
+ * @param key_def - key_def that defines which comparison is used.
+ * @return the hint.
+ */
+static inline uint64_t
+tuple_hint(const struct tuple *tuple, struct key_def *key_def)
+{
+	return key_def->tuple_hint(tuple, key_def);
+}
+
+/**
+ * Get a comparison hint of a key.
+ * @See tuple_hint for hint term definition.
+ * @param key - key to get hint of.
+ * @param key_def - key_def that defines which comparison is used.
+ * @return the hint.
+ */
+static inline uint64_t
+key_hint(const char *key, struct key_def *key_def)
+{
+	return key_def->key_hint(key, key_def);
 }
 
 #if defined(__cplusplus)

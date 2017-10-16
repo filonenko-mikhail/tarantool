@@ -38,6 +38,7 @@ add_library(tuple STATIC
     tuple_format.c
     tuple_update.c
     tuple_compare.cc
+    tuple_hint.cc
     tuple_extract_key.cc
     tuple_hash.cc
     tuple_bloom.c
