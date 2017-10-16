@@ -34,6 +34,7 @@
 #include "tuple_compare.h"
 #include "tuple_extract_key.h"
 #include "tuple_hash.h"
+#include "tuple_hint.h"
 #include "column_mask.h"
 #include "schema_def.h"
 #include "coll_id_cache.h"
@@ -135,6 +136,7 @@ key_def_set_func(struct key_def *def)
 	key_def_set_compare_func(def);
 	key_def_set_hash_func(def);
 	key_def_set_extract_func(def);
+	key_def_set_hint_func(def);
 }
 
 static void

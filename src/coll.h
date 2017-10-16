@@ -47,6 +47,8 @@ typedef int (*coll_cmp_f)(const char *s, size_t s_len, const char *t,
 typedef uint32_t (*coll_hash_f)(const char *s, size_t s_len, uint32_t *ph,
 				uint32_t *pcarry, struct coll *coll);
 
+typedef uint64_t (*coll_hint_f)(const char *s, size_t s_len, struct coll *coll);
+
 struct UCollator;
 
 /**
@@ -61,6 +63,8 @@ struct coll {
 	/** String comparator. */
 	coll_cmp_f cmp;
 	coll_hash_f hash;
+	/** The pointer to routine calculating tuple hint. */
+	coll_hint_f hint;
 	/** Reference counter. */
 	int refs;
 	/**
