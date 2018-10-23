@@ -54,7 +54,7 @@ swim_test_cluster_new(int size)
 		assert(res->node[i] != NULL);
 		sprintf(uri, "127.0.0.1:%d", i + 1);
 		uuid.time_low = i + 1;
-		int rc = swim_cfg(res->node[i], uri, -1, &uuid);
+		int rc = swim_cfg(res->node[i], uri, -1, -1, &uuid);
 		assert(rc == 0);
 		(void) rc;
 	}

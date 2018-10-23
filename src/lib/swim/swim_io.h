@@ -215,6 +215,15 @@ void
 swim_task_create(struct swim_task *task, swim_task_f complete,
 		 swim_task_f cancel);
 
+/** Allocate and create a new task. */
+struct swim_task *
+swim_task_new(swim_task_f complete, swim_task_f cancel);
+
+/** Callback to delete a task after its completion. */
+void
+swim_task_delete_cb(struct swim_task *task, struct swim_scheduler *scheduler,
+		    int rc);
+
 /** Destroy the task, pop from the queue. */
 static inline void
 swim_task_destroy(struct swim_task *task)

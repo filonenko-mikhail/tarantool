@@ -192,8 +192,10 @@ lua_swim_cfg_impl(struct lua_State *L, int ncfg, struct swim *swim,
 	lua_swim_get_uuid_field(L, ncfg, "uuid", funcname, &uuid);
 	double heartbeat_rate =
 		lua_swim_get_timeout_field(L, ncfg, "heartbeat", funcname);
+	double ack_timeout =
+		lua_swim_get_timeout_field(L, ncfg, "ack_timeout", funcname);
 
-	return swim_cfg(swim, server_uri, heartbeat_rate, &uuid);
+	return swim_cfg(swim, server_uri, heartbeat_rate, ack_timeout, &uuid);
 }
 
 /**
@@ -348,6 +350,35 @@ lua_swim_info(struct lua_State *L)
 	return 1;
 }
 
+/**
+ * Send a ping to a URI assuming that there is a member, which
+ * will respond with an ack, and will be added to the local
+ * members table.The Lua stack should contain two values - a SWIM
+ * instance to probe by, and a URI of a member.
+ * @param L Lua state.
+ * @retval 1 True.
+ * @retval 2 Nil and an error object. On invalid Lua parameters
+ *         and OOM it throws.
+ */
+static int
+lua_swim_probe_member(struct lua_State *L)
+{
+	struct swim *swim = lua_swim_ptr(L, 1);
+	if (lua_gettop(L) != 2 || swim == NULL)
+		return luaL_error(L, "Usage: swim:probe_member(uri)");
+	if (! lua_isstring(L, 2)) {
+		return luaL_error(L, "swim.probe_member: member URI should "\
+				  "be a string");
+	}
+	if (swim_probe_member(swim, lua_tostring(L, 2)) != 0) {
+		lua_pushnil(L);
+		luaT_pusherror(L, diag_last_error(diag_get()));
+		return 2;
+	}
+	lua_pushboolean(L, true);
+	return 1;
+}
+
 void
 tarantool_lua_swim_init(struct lua_State *L)
 {
@@ -358,6 +389,7 @@ tarantool_lua_swim_init(struct lua_State *L)
 		{"remove_member", lua_swim_remove_member},
 		{"delete", lua_swim_delete},
 		{"info", lua_swim_info},
+		{"probe_member", lua_swim_probe_member},
 		{NULL, NULL}
 	};
 	luaL_register_module(L, "swim", lua_swim_methods);

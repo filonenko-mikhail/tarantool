@@ -55,6 +55,8 @@ swim_new(void);
  *        @heartbeat_rate seconds. It is rather the protocol
  *        speed. Protocol period depends on member count and
  *        @heartbeat_rate.
+ * @param ack_timeout Time in seconds after which a ping is
+ *        considered to be unacknowledged.
  * @param uuid UUID of this instance. Must be unique over the
  *        cluster.
  *
@@ -63,7 +65,7 @@ swim_new(void);
  */
 int
 swim_cfg(struct swim *swim, const char *uri, double heartbeat_rate,
-	 const struct tt_uuid *uuid);
+	 double ack_timeout, const struct tt_uuid *uuid);
 
 /**
  * Stop listening and broadcasting messages, cleanup all internal
@@ -79,6 +81,13 @@ swim_add_member(struct swim *swim, const char *uri, const struct tt_uuid *uuid);
 /** Silently remove a member from members table. */
 int
 swim_remove_member(struct swim *swim, const struct tt_uuid *uuid);
+
+/**
+ * Send a ping to this address. If an ACK is received, the member
+ * will be added.
+ */
+int
+swim_probe_member(struct swim *swim, const char *uri);
 
 /** Dump member statuses into @a info. */
 void
