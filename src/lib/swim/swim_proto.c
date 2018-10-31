@@ -189,6 +189,11 @@ swim_decode_member_key(enum swim_member_key key, const char **pos,
 				     "member incarnation") != 0)
 			return -1;
 		break;
+	case SWIM_MEMBER_OLD_UUID:
+		if (swim_decode_uuid(&def->old_uuid, pos, end, msg_pref,
+				     "member old uuid") != 0)
+			return -1;
+		break;
 	default:
 		unreachable();
 	}
@@ -335,6 +340,59 @@ swim_member_bin_create(struct swim_member_bin *header)
 	header->m_uuid_len = UUID_LEN;
 	header->k_incarnation = SWIM_MEMBER_INCARNATION;
 	header->m_incarnation = 0xcf;
+}
+
+void
+swim_diss_header_bin_create(struct swim_diss_header_bin *header,
+			    uint16_t batch_size)
+{
+	header->k_header = SWIM_DISSEMINATION;
+	header->m_header = 0xcd;
+	header->v_header = mp_bswap_u16(batch_size);
+}
+
+void
+swim_event_bin_create(struct swim_event_bin *header)
+{
+	header->k_status = SWIM_MEMBER_STATUS;
+	header->k_addr = SWIM_MEMBER_ADDRESS;
+	header->m_addr = 0xce;
+	header->k_port = SWIM_MEMBER_PORT;
+	header->m_port = 0xcd;
+	header->k_uuid = SWIM_MEMBER_UUID;
+	header->m_uuid = 0xc4;
+	header->m_uuid_len = UUID_LEN;
+	header->k_incarnation = SWIM_MEMBER_INCARNATION;
+	header->m_incarnation = 0xcf;
+}
+
+void
+swim_event_bin_fill(struct swim_event_bin *header,
+		    enum swim_member_status status,
+		    const struct sockaddr_in *addr, const struct tt_uuid *uuid,
+		    uint64_t incarnation, int old_uuid_ttl)
+{
+	header->m_header = 0x85 + (old_uuid_ttl > 0);
+	header->v_status = status;
+	header->v_addr = mp_bswap_u32(addr->sin_addr.s_addr);
+	header->v_port = mp_bswap_u16(addr->sin_port);
+	memcpy(header->v_uuid, uuid, UUID_LEN);
+	header->v_incarnation = mp_bswap_u64(incarnation);
+}
+
+void
+swim_old_uuid_bin_create(struct swim_old_uuid_bin *header)
+{
+	header->k_uuid = SWIM_MEMBER_OLD_UUID;
+	header->m_uuid = 0xc4;
+	header->m_uuid_len = UUID_LEN;
+}
+
+void
+swim_old_uuid_bin_fill(struct swim_old_uuid_bin *header,
+		       const struct tt_uuid *uuid)
+{
+	memcpy(header->v_uuid, uuid, UUID_LEN);
 }
 
 void

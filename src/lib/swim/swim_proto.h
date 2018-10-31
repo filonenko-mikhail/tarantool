@@ -58,6 +58,19 @@
  * |                                                             |
  * |               OR/AND                                        |
  * |                                                             |
+ * |     SWIM_DISSEMINATION: [                                   |
+ * |         {                                                   |
+ * |             SWIM_MEMBER_STATUS: uint, enum member_status,   |
+ * |             SWIM_MEMBER_ADDRESS: uint, ip,                  |
+ * |             SWIM_MEMBER_PORT: uint, port,                   |
+ * |             SWIM_MEMBER_UUID: 16 byte UUID,                 |
+ * |             SWIM_MEMBER_INCARNATION: uint                   |
+ * |         },                                                  |
+ * |         ...                                                 |
+ * |     ],                                                      |
+ * |                                                             |
+ * |               OR/AND                                        |
+ * |                                                             |
  * |     SWIM_ANTI_ENTROPY: [                                    |
  * |         {                                                   |
  * |             SWIM_MEMBER_STATUS: uint, enum member_status,   |
@@ -91,6 +104,7 @@ extern const char *swim_member_status_strs[];
  */
 struct swim_member_def {
 	struct tt_uuid uuid;
+	struct tt_uuid old_uuid;
 	struct sockaddr_in addr;
 	uint64_t incarnation;
 	enum swim_member_status status;
@@ -124,6 +138,7 @@ enum swim_body_key {
 	SWIM_SRC_UUID = 0,
 	SWIM_ANTI_ENTROPY,
 	SWIM_FAILURE_DETECTION,
+	SWIM_DISSEMINATION,
 };
 
 /**
@@ -231,6 +246,7 @@ enum swim_member_key {
 	SWIM_MEMBER_PORT,
 	SWIM_MEMBER_UUID,
 	SWIM_MEMBER_INCARNATION,
+	SWIM_MEMBER_OLD_UUID,
 	swim_member_key_MAX,
 };
 
@@ -303,6 +319,98 @@ swim_member_bin_fill(struct swim_member_bin *header,
 		     enum swim_member_status status, uint64_t incarnation);
 
 /** }}}                  Anti-entropy component                 */
+
+/** {{{                 Dissemination component                 */
+
+/** SWIM dissemination MessagePack template. */
+struct PACKED swim_diss_header_bin {
+	/** mp_encode_uint(SWIM_DISSEMINATION) */
+	uint8_t k_header;
+	/** mp_encode_array() */
+	uint8_t m_header;
+	uint16_t v_header;
+};
+
+/** Initialize dissemination header. */
+void
+swim_diss_header_bin_create(struct swim_diss_header_bin *header,
+			    uint16_t batch_size);
+
+/** SWIM event MessagePack template. */
+struct PACKED swim_event_bin {
+	/** mp_encode_map(5 or 6) */
+	uint8_t m_header;
+
+	/** mp_encode_uint(SWIM_MEMBER_STATUS) */
+	uint8_t k_status;
+	/** mp_encode_uint(enum member_status) */
+	uint8_t v_status;
+
+	/** mp_encode_uint(SWIM_MEMBER_ADDRESS) */
+	uint8_t k_addr;
+	/** mp_encode_uint(addr.sin_addr.s_addr) */
+	uint8_t m_addr;
+	uint32_t v_addr;
+
+	/** mp_encode_uint(SWIM_MEMBER_PORT) */
+	uint8_t k_port;
+	/** mp_encode_uint(addr.sin_port) */
+	uint8_t m_port;
+	uint16_t v_port;
+
+	/** mp_encode_uint(SWIM_MEMBER_UUID) */
+	uint8_t k_uuid;
+	/** mp_encode_bin(UUID_LEN) */
+	uint8_t m_uuid;
+	uint8_t m_uuid_len;
+	uint8_t v_uuid[UUID_LEN];
+
+	/** mp_encode_uint(SWIM_MEMBER_INCARNATION) */
+	uint8_t k_incarnation;
+	/** mp_encode_uint(64bit incarnation) */
+	uint8_t m_incarnation;
+	uint64_t v_incarnation;
+};
+
+/** Initialize dissemination record. */
+void
+swim_event_bin_create(struct swim_event_bin *header);
+
+/**
+ * Since usually there are many evnets, it is faster to reset a
+ * few fields in an existing template, then each time create a
+ * new template. So the usage pattern is create(), fill(),
+ * fill() ... .
+ */
+void
+swim_event_bin_fill(struct swim_event_bin *header,
+		    enum swim_member_status status,
+		    const struct sockaddr_in *addr, const struct tt_uuid *uuid,
+		    uint64_t incarnation, int old_uuid_ttl);
+
+/** Optional attribute of an event - old UUID of a member. */
+struct swim_old_uuid_bin {
+	/** mp_encode_uint(SWIM_MEMBER_OLD_UUID) */
+	uint8_t k_uuid;
+	/** mp_encode_bin(UUID_LEN) */
+	uint8_t m_uuid;
+	uint8_t m_uuid_len;
+	uint8_t v_uuid[UUID_LEN];
+};
+
+/** Initialize old UUID field. */
+void
+swim_old_uuid_bin_create(struct swim_old_uuid_bin *header);
+
+/**
+ * Set mutable fields of the field, by the same principle as event
+ * filling.
+ */
+void
+swim_old_uuid_bin_fill(struct swim_old_uuid_bin *header,
+		       const struct tt_uuid *uuid);
+
+/** }}}                 Dissemination component                 */
 
 /** {{{                     Meta component                      */
 
