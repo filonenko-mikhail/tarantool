@@ -35,6 +35,11 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 
+enum {
+	/** Reserve 272 bytes for headers. */
+	MAX_PAYLOAD_SIZE = 1200,
+};
+
 /**
  * SWIM binary protocol structures and helpers. Below is a picture
  * of a SWIM message template:
@@ -108,6 +113,13 @@ struct swim_member_def {
 	struct sockaddr_in addr;
 	uint64_t incarnation;
 	enum swim_member_status status;
+	const char *payload;
+	int payload_size;
+	/**
+	 * Zero payload size does not mean that payload is not
+	 * specified. It can be just empty.
+	 */
+	bool is_payload_specified;
 };
 
 /** Initialize the definition with default values. */
@@ -247,6 +259,7 @@ enum swim_member_key {
 	SWIM_MEMBER_UUID,
 	SWIM_MEMBER_INCARNATION,
 	SWIM_MEMBER_OLD_UUID,
+	SWIM_MEMBER_PAYLOAD,
 	swim_member_key_MAX,
 };
 
@@ -301,6 +314,13 @@ struct PACKED swim_member_bin {
 	/** mp_encode_uint(64bit incarnation) */
 	uint8_t m_incarnation;
 	uint64_t v_incarnation;
+
+	/** mp_encode_uint(SWIM_MEMBER_PAYLOAD) */
+	uint8_t k_payload;
+	/** mp_encode_bin(16bit bin header) */
+	uint8_t m_payload_size;
+	uint16_t v_payload_size;
+	/** Payload data ... */
 };
 
 /** Initialize antri-entropy record. */
@@ -316,7 +336,8 @@ swim_member_bin_create(struct swim_member_bin *header);
 void
 swim_member_bin_fill(struct swim_member_bin *header,
 		     const struct sockaddr_in *addr, const struct tt_uuid *uuid,
-		     enum swim_member_status status, uint64_t incarnation);
+		     enum swim_member_status status, uint64_t incarnation,
+		     uint16_t payload_size);
 
 /** }}}                  Anti-entropy component                 */
 
@@ -338,7 +359,7 @@ swim_diss_header_bin_create(struct swim_diss_header_bin *header,
 
 /** SWIM event MessagePack template. */
 struct PACKED swim_event_bin {
-	/** mp_encode_map(5 or 6) */
+	/** mp_encode_map(5, or 6, or 7) */
 	uint8_t m_header;
 
 	/** mp_encode_uint(SWIM_MEMBER_STATUS) */
@@ -386,7 +407,7 @@ void
 swim_event_bin_fill(struct swim_event_bin *header,
 		    enum swim_member_status status,
 		    const struct sockaddr_in *addr, const struct tt_uuid *uuid,
-		    uint64_t incarnation, int old_uuid_ttl);
+		    uint64_t incarnation, int old_uuid_ttl, int payload_ttl);
 
 /** Optional attribute of an event - old UUID of a member. */
 struct swim_old_uuid_bin {

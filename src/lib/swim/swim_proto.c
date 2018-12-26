@@ -115,21 +115,36 @@ swim_decode_port(struct sockaddr_in *address, const char **pos, const char *end,
 	return 0;
 }
 
-int
-swim_decode_uuid(struct tt_uuid *uuid, const char **pos, const char *end,
-		 const char *msg_pref, const char *param_name)
+static inline int
+swim_decode_bin(const char **bin, uint32_t *size, const char **pos,
+		const char *end, const char *msg_pref, const char *param_name)
 {
 	if (mp_typeof(**pos) != MP_BIN || mp_check_binl(*pos, end) > 0) {
 		diag_set(SwimError, "%s %s should be bin", msg_pref,
 			 param_name);
 		return -1;
 	}
-	if (mp_decode_binl(pos) != UUID_LEN || *pos + UUID_LEN > end) {
+	*bin = mp_decode_bin(pos, size);
+	if (*pos > end) {
 		diag_set(SwimError, "%s %s is invalid", msg_pref, param_name);
 		return -1;
 	}
-	memcpy(uuid, *pos, UUID_LEN);
-	*pos += UUID_LEN;
+	return 0;
+}
+
+int
+swim_decode_uuid(struct tt_uuid *uuid, const char **pos, const char *end,
+		 const char *msg_pref, const char *param_name)
+{
+	uint32_t size;
+	const char *bin;
+	if (swim_decode_bin(&bin, &size, pos, end, msg_pref, param_name) != 0)
+		return -1;
+	if (size != UUID_LEN) {
+		diag_set(SwimError, "%s %s is invalid", msg_pref, param_name);
+		return -1;
+	}
+	memcpy(uuid, bin, UUID_LEN);
 	return 0;
 }
 
@@ -157,6 +172,7 @@ swim_decode_member_key(enum swim_member_key key, const char **pos,
 		       struct swim_member_def *def)
 {
 	uint64_t tmp;
+	uint32_t len;
 	switch (key) {
 	case SWIM_MEMBER_STATUS:
 		if (swim_decode_uint(pos, end, &tmp, msg_pref,
@@ -193,6 +209,18 @@ swim_decode_member_key(enum swim_member_key key, const char **pos,
 		if (swim_decode_uuid(&def->old_uuid, pos, end, msg_pref,
 				     "member old uuid") != 0)
 			return -1;
+		break;
+	case SWIM_MEMBER_PAYLOAD:
+		if (swim_decode_bin(&def->payload, &len, pos, end, msg_pref,
+				    "member payload") != 0)
+			return -1;
+		if (len > MAX_PAYLOAD_SIZE) {
+			diag_set(SwimError, "%s member payload size should be "\
+				 "<= %d", msg_pref, MAX_PAYLOAD_SIZE);
+			return -1;
+		}
+		def->payload_size = (int) len;
+		def->is_payload_specified = true;
 		break;
 	default:
 		unreachable();
@@ -317,13 +345,15 @@ swim_anti_entropy_header_bin_create(struct swim_anti_entropy_header_bin *header,
 void
 swim_member_bin_fill(struct swim_member_bin *header,
 		     const struct sockaddr_in *addr, const struct tt_uuid *uuid,
-		     enum swim_member_status status, uint64_t incarnation)
+		     enum swim_member_status status, uint64_t incarnation,
+		     uint16_t payload_size)
 {
 	header->v_status = status;
 	header->v_addr = mp_bswap_u32(addr->sin_addr.s_addr);
 	header->v_port = mp_bswap_u16(addr->sin_port);
 	memcpy(header->v_uuid, uuid, UUID_LEN);
 	header->v_incarnation = mp_bswap_u64(incarnation);
+	header->v_payload_size = mp_bswap_u16(payload_size);
 }
 
 void
@@ -340,6 +370,8 @@ swim_member_bin_create(struct swim_member_bin *header)
 	header->m_uuid_len = UUID_LEN;
 	header->k_incarnation = SWIM_MEMBER_INCARNATION;
 	header->m_incarnation = 0xcf;
+	header->k_payload = SWIM_MEMBER_PAYLOAD;
+	header->m_payload_size = 0xc5;
 }
 
 void
@@ -370,9 +402,9 @@ void
 swim_event_bin_fill(struct swim_event_bin *header,
 		    enum swim_member_status status,
 		    const struct sockaddr_in *addr, const struct tt_uuid *uuid,
-		    uint64_t incarnation, int old_uuid_ttl)
+		    uint64_t incarnation, int old_uuid_ttl, int payload_ttl)
 {
-	header->m_header = 0x85 + (old_uuid_ttl > 0);
+	header->m_header = 0x85 + (old_uuid_ttl > 0) + (payload_ttl > 0);
 	header->v_status = status;
 	header->v_addr = mp_bswap_u32(addr->sin_addr.s_addr);
 	header->v_port = mp_bswap_u16(addr->sin_port);
