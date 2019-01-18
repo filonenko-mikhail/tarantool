@@ -138,7 +138,8 @@ swim_packet_create(struct swim_packet *packet);
 
 typedef void (*swim_scheduler_on_input_f)(struct swim_scheduler *scheduler,
 					  const char *buf, const char *end,
-					  const struct sockaddr_in *src);
+					  const struct sockaddr_in *src,
+					  const struct sockaddr_in *proxy);
 
 /** Planner and executor of input and output operations.*/
 struct swim_scheduler {
@@ -206,9 +207,23 @@ struct swim_task {
 	struct swim_packet packet;
 	/** Destination address. */
 	struct sockaddr_in dst;
+	/**
+	 * Optional proxy via which the destination should be
+	 * reached.
+	 */
+	struct sockaddr_in proxy;
+	/** True if a proxy is specified. */
+	bool is_proxy_specified;
 	/** Place in a queue of tasks. */
 	struct rlist in_queue_output;
 };
+
+/**
+ * Set the proxy for the task. Before sending this proxy will be
+ * dumped into metadata.
+ */
+void
+swim_task_proxy(struct swim_task *task, const struct sockaddr_in *proxy);
 
 /**
  * Put the task into a queue of tasks. Eventually it will be sent.
