@@ -614,6 +614,30 @@ local function upgrade_to_2_1_0()
     upgrade_priv_to_2_1_0()
 end
 
+--------------------------------------------------------------------------------
+-- Tarantool 2.1.1
+--------------------------------------------------------------------------------
+
+local function upgrade_sql_stat_to_2_1_1()
+    local _sql_stat1 = box.space[box.schema.SQL_STAT1_ID]
+    local _sql_stat4 = box.space[box.schema.SQL_STAT4_ID]
+
+    local format = _sql_stat1:format()
+    format[3].type = 'array'
+    _sql_stat1:format(format)
+
+
+    format = _sql_stat4:format()
+    format[3].type = 'array'
+    format[4].type = 'array'
+    format[5].type = 'array'
+    _sql_stat4:format(format)
+end
+
+local function upgrade_to_2_1_1()
+    upgrade_sql_stat_to_2_1_1()
+end
+
 local function get_version()
     local version = box.space._schema:get{'version'}
     if version == nil then
@@ -641,7 +665,8 @@ local function upgrade(options)
         {version = mkversion(1, 7, 7), func = upgrade_to_1_7_7, auto = true},
         {version = mkversion(1, 10, 0), func = upgrade_to_1_10_0, auto = true},
         {version = mkversion(1, 10, 2), func = upgrade_to_1_10_2, auto = true},
-        {version = mkversion(2, 1, 0), func = upgrade_to_2_1_0, auto = true}
+        {version = mkversion(2, 1, 0), func = upgrade_to_2_1_0, auto = true},
+        {version = mkversion(2, 1, 1), func = upgrade_to_2_1_1, auto = true}
     }
 
     for _, handler in ipairs(handlers) do

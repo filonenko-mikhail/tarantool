@@ -1,6 +1,6 @@
 #!/usr/bin/env tarantool
 test = require("sqltester")
-test:plan(20)
+test:plan(25)
 
 testprefix = "analyzeC"
 
@@ -40,7 +40,18 @@ test:do_execsql_test(
         CREATE INDEX t1c ON t1(c);
         ANALYZE;
         DELETE FROM "_sql_stat1";
-        INSERT INTO "_sql_stat1"("tbl","idx","stat") VALUES('t1','t1b','12345 2'),('t1','t1c','12345 4');
+    ]], {
+        -- <1.0>
+        -- </1.0>
+    })
+
+local _sql_stat1 = box.space[box.schema.SQL_STAT1_ID]
+_sql_stat1:insert{'t1','t1b',{12345, 2}}
+_sql_stat1:insert{'t1','t1c',{12345, 4}}
+
+test:do_execsql_test(
+    1.0,
+    [[
         ANALYZE;
         SELECT b,c,d, '#' FROM t1 WHERE b BETWEEN 3 AND 8 ORDER BY d;
     ]], {
@@ -180,7 +191,17 @@ test:do_execsql_test(
         CREATE INDEX t1bc ON t1(b,c);
         CREATE INDEX t1db ON t1(d,b);
         DELETE FROM "_sql_stat1";
-        INSERT INTO "_sql_stat1"("tbl","idx","stat") VALUES('t1','t1bc','12345 3 2 sz=10'),('t1','t1db','12345 3 2 sz=20');
+    ]], {
+         -- <4.0>
+        -- </4.0>
+    })
+
+_sql_stat1:insert{'t1','t1bc',{12345, 3, 2, 'sz=10'}}
+_sql_stat1:insert{'t1','t1db',{12345, 3, 2, 'sz=20'}}
+
+test:do_execsql_test(
+    4.0,
+    [[
         ANALYZE;
         SELECT count(b) FROM t1;
     ]], {
@@ -203,7 +224,17 @@ test:do_execsql_test(
     4.2,
     [[
         DELETE FROM "_sql_stat1";
-        INSERT INTO "_sql_stat1"("tbl","idx","stat") VALUES('t1','t1bc','12345 3 2 sz=20'),('t1','t1db','12345 3 2 sz=10');
+    ]], {
+        -- <4.2>
+        -- </4.2>
+    })
+
+_sql_stat1:insert{'t1','t1bc',{12345, 3, 2, 'sz=20'}}
+_sql_stat1:insert{'t1','t1db',{12345, 3, 2, 'sz=10'}}
+
+test:do_execsql_test(
+    4.2,
+    [[
         ANALYZE;
         SELECT count(b) FROM t1;
     ]], {
@@ -229,9 +260,17 @@ test:do_execsql_test(
     5.0,
     [[
         DELETE FROM "_sql_stat1";
-        INSERT INTO "_sql_stat1"("tbl","idx","stat")
-          VALUES('t1','t1bc','12345 3 2 x=5 sz=10 y=10'),
-                ('t1','t1db','12345 3 2 whatever sz=20 junk');
+    ]], {
+        -- <5.0>
+        -- </5.0>
+    })
+
+_sql_stat1:insert{'t1','t1bc',{12345, 3, 2, 'x=5', 'sz=10', 'y=10'}}
+_sql_stat1:insert{'t1','t1db',{12345, 3, 2, 'whatever', 'sz=20', 'junk'}}
+
+test:do_execsql_test(
+    5.0,
+    [[
         ANALYZE;
         SELECT count(b) FROM t1;
     ]], {
@@ -255,7 +294,17 @@ test:do_execsql_test(
     5.2,
     [[
         DELETE FROM "_sql_stat1";
-        INSERT INTO "_sql_stat1"("tbl","idx","stat") VALUES('t1','t1db','12345 3 2 x=5 sz=10 y=10'), ('t1','t1bc','12345 3 2 whatever sz=20 junk');
+    ]], {
+        -- <5.2>
+        -- </5.2>
+    })
+
+_sql_stat1:insert{'t1','t1db',{12345, 3, 2, 'x=5', 'sz=10', 'y=10'}}
+_sql_stat1:insert{'t1','t1bc',{12345, 3, 2, 'whatever', 'sz=20', 'junk'}}
+
+test:do_execsql_test(
+    5.2,
+    [[
         ANALYZE;
         SELECT count(b) FROM t1;
     ]], {

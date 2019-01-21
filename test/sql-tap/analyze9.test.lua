@@ -1,8 +1,11 @@
 #!/usr/bin/env tarantool
 test = require("sqltester")
-test:plan(121)
+test:plan(120)
 
 testprefix = "analyze9"
+
+_sql_stat1 = box.space[box.schema.SQL_STAT1_ID]
+_sql_stat4 = box.space[box.schema.SQL_STAT4_ID]
 
 --!./tcltestrunner.lua
 -- 2013 August 3
@@ -72,9 +75,9 @@ test:do_execsql_test(
         SELECT "tbl","idx","neq","nlt","ndlt",msgpack_decode_sample("sample") FROM "_sql_stat4" where "idx" = 'I1';
     ]], {
         -- <1.2>
-        "T1", "I1", "1 1", "0 0", "0 0", "(0) (0)", "T1", "I1", "1 1", "1 1", "1 1", "(1) (1)", 
-        "T1", "I1", "1 1", "2 2", "2 2", "(2) (2)", "T1", "I1", "1 1", "3 3", "3 3", "(3) (3)", 
-        "T1", "I1", "1 1", "4 4", "4 4", "(4) (4)"
+        "T1","I1",1,1,0,0,0,0,"(0) (0)","T1","I1",1,1,1,1,1,1,"(1) (1)",
+        "T1","I1",1,1,2,2,2,2,"(2) (2)","T1","I1",1,1,3,3,3,3,"(3) (3)",
+        "T1","I1",1,1,4,4,4,4,"(4) (4)"
         -- </1.2>
     })
 
@@ -85,9 +88,9 @@ test:do_execsql_test(
 
     ]], {
         -- <1.3>
-        'T1', 'T1', '1', '0', '0', '(0)', 'T1', 'T1', '1', '1', '1', '(1)', 
-        'T1', 'T1', '1', '2', '2', '(2)', 'T1', 'T1', '1', '3', '3', '(3)', 
-        'T1', 'T1', '1', '4', '4', '(4)'
+        "T1","T1",1,0,0,"(0)","T1","T1",1,1,1,"(1)",
+        "T1","T1",1,2,2,"(2)","T1","T1",1,3,3,"(3)",
+        "T1","T1",1,4,4,"(4)"
         -- </1.3>
     })
 
@@ -184,12 +187,12 @@ test:do_execsql_test(
     ]], generate_tens(100))
 
 -- The first element in the "nEq" list of all samples should therefore be 10.
---      
+      
 test:do_execsql_test(
     "3.3.2",
     [[
         ANALYZE;
-        SELECT lrange("neq", 1, 1) FROM "_sql_stat4" WHERE "idx" = 'I2';
+        SELECT lrange(msgpack_decode_sample("neq"), 1, 1) FROM "_sql_stat4" WHERE "idx" = 'I2';
     ]], generate_tens_str(24))
 
 ---------------------------------------------------------------------------
@@ -283,31 +286,100 @@ test:do_execsql_test(
         -- </4.2>
     })
 
+function get_tuples_where_order_by_limit(order_by, order, limit)
+    space = box.space[box.schema.SQL_STAT4_ID]
+    t = {}
+    for k, v in space:pairs() do
+        table.insert(t, v)
+    end
+
+    local i
+    local count
+    local where = {idx = 'I1'}
+    if where ~= 0 then
+        for k, v in pairs(where) do
+            i = 1
+            for key, tuple in pairs(t) do
+                tuple = t[i]
+                if tuple[k] ~= v then
+                    t[i] = nil
+                else
+                    count = i
+                end
+                i = i + 1
+            end
+        end
+    end
+
+    local compare
+    if order == 'asc' then
+        compare = function(a, b)
+            if a[order_by] <= b[order_by] then
+                return true
+            end
+        end
+    else
+        compare = function(a, b)
+            if a[order_by] > b[order_by] then
+                return true
+            end
+        end
+    end
+
+    table.sort(t, compare)
+
+    if limit == nil then
+        limit = count
+    end
+
+    local ret = ''
+    i = 1
+    while i <= limit do
+        if i == 1 then
+            ret = tostring(t[i])
+        else
+            ret = ret..', '..tostring(t[i])
+        end
+        i = i + 1
+    end
+    return ret
+end
+
+box.internal.sql_create_function("get_tuples_where_order_by_limit", "TEXT", get_tuples_where_order_by_limit)
+
 test:do_execsql_test(
     4.3,
     [[
-        SELECT "neq", lrange("nlt", 1, 3), lrange("ndlt", 1, 3), lrange(msgpack_decode_sample("sample"), 1, 3) 
-            FROM "_sql_stat4" WHERE "idx" = 'I1' ORDER BY "sample" LIMIT 16;
+        SELECT get_tuples_where_order_by_limit('sample', 'asc', 16);
     ]], {
         -- <4.3>
-        "10 10 10","0 0 0","0 0 0","0 0 0","10 10 10","10 10 10","1 1 1","1 1 1","10 10 10","20 20 20",
-        "2 2 2","2 2 2","10 10 10","30 30 30","3 3 3","3 3 3","10 10 10","40 40 40","4 4 4","4 4 4",
-        "10 10 10","50 50 50","5 5 5","5 5 5","10 10 10","60 60 60","6 6 6","6 6 6","10 10 10","70 70 70",
-        "7 7 7","7 7 7","10 10 10","80 80 80","8 8 8","8 8 8","10 10 10","90 90 90","9 9 9","9 9 9",
-        "10 10 10","100 100 100","10 10 10","10 10 10","10 10 10","110 110 110","11 11 11","11 11 11",
-        "10 10 10","120 120 120","12 12 12","12 12 12","10 10 10","130 130 130","13 13 13","13 13 13",
-        "10 10 10","140 140 140","14 14 14","14 14 14","10 10 10","150 150 150","15 15 15","15 15 15"
+        "[\'T1\', \'I1\', [10, 10, 10], [0, 0, 0], [0, 0, 0], !!binary kwAAoTA=], "..
+        "[\'T1\', \'I1', [10, 10, 10], [10, 10, 10], [1, 1, 1], !!binary kwEBoTE=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [20, 20, 20], [2, 2, 2], !!binary kwICoTI=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [30, 30, 30], [3, 3, 3], !!binary kwMDoTM=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [40, 40, 40], [4, 4, 4], !!binary kwQEoTQ=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [50, 50, 50], [5, 5, 5], !!binary kwUFoTU=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [60, 60, 60], [6, 6, 6], !!binary kwYGoTY=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [70, 70, 70], [7, 7, 7], !!binary kwcHoTc=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [80, 80, 80], [8, 8, 8], !!binary kwgIoTg=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [90, 90, 90], [9, 9, 9], !!binary kwkJoTk=], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [100, 100, 100], [10, 10, 10], !!binary kwoKojEw], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [110, 110, 110], [11, 11, 11], !!binary kwsLojEx], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [120, 120, 120], [12, 12, 12], !!binary kwwMojEy], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [130, 130, 130], [13, 13, 13], !!binary kw0NojEz], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [140, 140, 140], [14, 14, 14], !!binary kw4OojE0], "..
+        "[\'T1\', \'I1\', [10, 10, 10], [150, 150, 150], [15, 15, 15], !!binary kw8PojE1]"
         -- </4.3>
     })
 
 test:do_execsql_test(
     4.4,
     [[
-        SELECT "neq", lrange("nlt", 1, 3), lrange("ndlt", 1, 3), lrange(msgpack_decode_sample("sample"), 1, 3) 
-        FROM "_sql_stat4" WHERE "idx" = 'I1' ORDER BY "sample" DESC LIMIT 2;
+        SELECT get_tuples_where_order_by_limit('sample', 'desc', 2);
     ]], {
         -- <4.4>
-        "2 1 1","295 296 296","120 122 125","201 4 h","5 3 1","290 290 291","119 119 120","200 1 b"
+        "['T1', 'I1', [2, 1, 1], [295, 296, 296], [120, 122, 125], !!binary k8zJBKFo], "..
+        "['T1', 'I1', [5, 3, 1], [290, 290, 291], [119, 119, 120], !!binary k8zIAaFi]"
         -- </4.4>
     })
 
@@ -391,16 +463,41 @@ test:do_execsql_test(
         INSERT INTO t1 VALUES(null, 4, 4);
         INSERT INTO t1 VALUES(null, 5, 5);
         ANALYZE;
-        CREATE TABLE x1(tbl TEXT, idx TEXT , neq TEXT, nlt TEXT, ndlt TEXT, sample BLOB, PRIMARY KEY(tbl, idx, sample));
-        INSERT INTO x1 SELECT * FROM "_sql_stat4";
-        DELETE FROM "_sql_stat4";
-        INSERT INTO "_sql_stat4" SELECT * FROM x1;
-        ANALYZE;
     ]])
+
+function copy_tuples(from, to)
+    for i,t in from:pairs() do
+        to:insert(t)
+    end
+end
+
+function prepare_to_6_2()
+    local format = {}
+    format[1] = {name='tbl', type='string'}
+    format[2] = {name='idx', type='string'}
+    format[3] = {name='neq', type='array'}
+    format[4] = {name='nlt', type='array'}
+    format[5] = {name='ndlt', type='array'}
+    format[6] = {name='sample', type='scalar'}
+    x1 = box.schema.space.create("x1", {engine = 'memtx', format = format, field_count = 0})
+    x1:create_index('primary', {parts = {1, 'string', 2, 'string', 6, 'scalar'}})
+    copy_tuples(_sql_stat4, x1)
+end
+
+prepare_to_6_2()
 
 test:do_execsql_test(
     6.2,
     [[
+        DELETE FROM "_sql_stat4";
+    ]])
+
+copy_tuples(x1, _sql_stat4)
+
+test:do_execsql_test(
+    6.3,
+    [[
+        ANALYZE;
         SELECT * FROM t1 WHERE a = 'abc';
     ]])
 
@@ -459,10 +556,19 @@ test:do_execsql_test(
 --        -- </7.2>
 --    })
 
+function update_stat_fields(stat, field_num, val)
+    for i,t in stat:pairs() do
+        t = t:transform(3, 3)
+        print(t)
+        stat:update(t, {{'=', field_num, val}})
+    end
+end
+
+update_stat_fields(_sql_stat4, 3, {0, 0, 0})
+
 test:do_execsql_test(
     7.3,
     [[
-        UPDATE "_sql_stat4" SET "neq" = '0 0 0';
         ANALYZE;
         SELECT * FROM t1 WHERE a = 1;
     ]], {
@@ -471,11 +577,12 @@ test:do_execsql_test(
         -- </7.3>
     })
 
+box.sql.execute('ANALYZE')
+update_stat_fields(_sql_stat4, 5, {0, 0, 0})
+
 test:do_execsql_test(
     7.4,
     [[
-        ANALYZE;
-        UPDATE "_sql_stat4" SET "ndlt" = '0 0 0';
         ANALYZE;
         SELECT * FROM t1 WHERE a = 3;
     ]], {
@@ -484,11 +591,12 @@ test:do_execsql_test(
         -- </7.4>
     })
 
+box.sql.execute('ANALYZE')
+update_stat_fields(_sql_stat4, 4, {0, 0, 0})
+
 test:do_execsql_test(
     7.5,
     [[
-        ANALYZE;
-        UPDATE "_sql_stat4" SET "nlt" = '0 0 0';
         ANALYZE;
         SELECT * FROM t1 WHERE a = 5;
     ]], {
@@ -1044,8 +1152,9 @@ test:do_execsql_test(
         INSERT INTO x1 VALUES(3, 4);
         INSERT INTO x1 VALUES(5, 6);
         ANALYZE;
-        INSERT INTO "_sql_stat4" VALUES('x1', 'abc', '', '', '', '');
     ]])
+
+_sql_stat4:insert{'x1', 'abc', {}, {}, {}, ''}
 
 test:do_execsql_test(
     15.2,
@@ -1057,11 +1166,7 @@ test:do_execsql_test(
         -- </15.2>
     })
 
-test:do_execsql_test(
-    15.3,
-    [[
-        INSERT INTO "_sql_stat4" VALUES('42', '42', '42', '42', '42', '42');
-    ]])
+_sql_stat4:insert{'42', '42', {42}, {42}, {42}, '42'}
 
 test:do_execsql_test(
     15.4,
@@ -1127,16 +1232,13 @@ test:do_execsql_test(
     })
 
 -- This is just for coverage....
-test:do_execsql_test(
-    15.11,
-    [[
-        ANALYZE;
-        UPDATE "_sql_stat1" SET "stat" = "stat" || ' unordered';
-    ]])
+box.sql.execute('ANALYZE')
+update_stat_fields(_sql_stat1, 3, {'unordered'})
 
 test:do_execsql_test(
     15.12,
     [[
+        ANALYZE;
         SELECT * FROM x1;
     ]], {
         -- <15.12>

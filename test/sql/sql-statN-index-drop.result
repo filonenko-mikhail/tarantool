@@ -33,17 +33,17 @@ box.sql.execute("ANALYZE;")
 -- Checking the data.
 box.sql.execute("SELECT * FROM \"_sql_stat4\";")
 ---
-- - ['T1', 'I1', '1', '0', '0', !!binary kQI=]
-  - ['T1', 'T1', '1', '0', '0', !!binary kQE=]
-  - ['T2', 'I1', '1', '0', '0', !!binary kQI=]
-  - ['T2', 'T2', '1', '0', '0', !!binary kQE=]
+- - ['T1', 'I1', [1], [0], [0], !!binary kQI=]
+  - ['T1', 'T1', [1], [0], [0], !!binary kQE=]
+  - ['T2', 'I1', [1], [0], [0], !!binary kQI=]
+  - ['T2', 'T2', [1], [0], [0], !!binary kQE=]
 ...
 box.sql.execute("SELECT * FROM \"_sql_stat1\";")
 ---
-- - ['T1', 'I1', '1 1']
-  - ['T1', 'T1', '1 1']
-  - ['T2', 'I1', '1 1']
-  - ['T2', 'T2', '1 1']
+- - ['T1', 'I1', [1, 1]]
+  - ['T1', 'T1', [1, 1]]
+  - ['T2', 'I1', [1, 1]]
+  - ['T2', 'T2', [1, 1]]
 ...
 -- Dropping an index.
 box.sql.execute("DROP INDEX i1 ON t1;")
@@ -52,15 +52,15 @@ box.sql.execute("DROP INDEX i1 ON t1;")
 -- Checking the DROP INDEX results.
 box.sql.execute("SELECT * FROM \"_sql_stat4\";")
 ---
-- - ['T1', 'T1', '1', '0', '0', !!binary kQE=]
-  - ['T2', 'I1', '1', '0', '0', !!binary kQI=]
-  - ['T2', 'T2', '1', '0', '0', !!binary kQE=]
+- - ['T1', 'T1', [1], [0], [0], !!binary kQE=]
+  - ['T2', 'I1', [1], [0], [0], !!binary kQI=]
+  - ['T2', 'T2', [1], [0], [0], !!binary kQE=]
 ...
 box.sql.execute("SELECT * FROM \"_sql_stat1\";")
 ---
-- - ['T1', 'T1', '1 1']
-  - ['T2', 'I1', '1 1']
-  - ['T2', 'T2', '1 1']
+- - ['T1', 'T1', [1, 1]]
+  - ['T2', 'I1', [1, 1]]
+  - ['T2', 'T2', [1, 1]]
 ...
 --Cleaning up.
 box.sql.execute("DROP TABLE t1;")
@@ -95,17 +95,17 @@ box.sql.execute("ANALYZE;")
 -- Checking the data.
 box.sql.execute("SELECT * FROM \"_sql_stat4\";")
 ---
-- - ['T1', 'I1', '1', '0', '0', !!binary kQI=]
-  - ['T1', 'T1', '1', '0', '0', !!binary kQE=]
-  - ['T2', 'I1', '1', '0', '0', !!binary kQI=]
-  - ['T2', 'T2', '1', '0', '0', !!binary kQE=]
+- - ['T1', 'I1', [1], [0], [0], !!binary kQI=]
+  - ['T1', 'T1', [1], [0], [0], !!binary kQE=]
+  - ['T2', 'I1', [1], [0], [0], !!binary kQI=]
+  - ['T2', 'T2', [1], [0], [0], !!binary kQE=]
 ...
 box.sql.execute("SELECT * FROM \"_sql_stat1\";")
 ---
-- - ['T1', 'I1', '1 1']
-  - ['T1', 'T1', '1 1']
-  - ['T2', 'I1', '1 1']
-  - ['T2', 'T2', '1 1']
+- - ['T1', 'I1', [1, 1]]
+  - ['T1', 'T1', [1, 1]]
+  - ['T2', 'I1', [1, 1]]
+  - ['T2', 'T2', [1, 1]]
 ...
 -- Dropping an index.
 box.sql.execute("DROP INDEX i1 ON t2;")
@@ -114,15 +114,15 @@ box.sql.execute("DROP INDEX i1 ON t2;")
 -- Checking the DROP INDEX results.
 box.sql.execute("SELECT * FROM \"_sql_stat4\";")
 ---
-- - ['T1', 'I1', '1', '0', '0', !!binary kQI=]
-  - ['T1', 'T1', '1', '0', '0', !!binary kQE=]
-  - ['T2', 'T2', '1', '0', '0', !!binary kQE=]
+- - ['T1', 'I1', [1], [0], [0], !!binary kQI=]
+  - ['T1', 'T1', [1], [0], [0], !!binary kQE=]
+  - ['T2', 'T2', [1], [0], [0], !!binary kQE=]
 ...
 box.sql.execute("SELECT * FROM \"_sql_stat1\";")
 ---
-- - ['T1', 'I1', '1 1']
-  - ['T1', 'T1', '1 1']
-  - ['T2', 'T2', '1 1']
+- - ['T1', 'I1', [1, 1]]
+  - ['T1', 'T1', [1, 1]]
+  - ['T2', 'T2', [1, 1]]
 ...
 --Cleaning up.
 box.sql.execute("DROP TABLE t1;")

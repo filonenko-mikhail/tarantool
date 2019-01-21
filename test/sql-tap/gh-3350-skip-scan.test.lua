@@ -3,7 +3,7 @@
 -- gh-3350, gh-2859
 
 test = require("sqltester")
-test:plan(4)
+test:plan(5)
 
 local function lindex(str, pos)
     return str:sub(pos+1, pos+1)
@@ -78,7 +78,7 @@ test:do_execsql_test(
 )
 
 test:do_execsql_test(
-        "skip-scan-1.4",
+        "skip-scan-1.4.1",
         [[
             DROP TABLE IF EXISTS t1;
             CREATE TABLE t1(id INTEGER PRIMARY KEY, a TEXT, b INT, c INT, d INT);
@@ -96,13 +96,21 @@ test:do_execsql_test(
             ANALYZE;
             DELETE FROM "_sql_stat1";
             DELETE FROM "_sql_stat4";
-            INSERT INTO "_sql_stat1" VALUES('T1','T1ABC','10000 5000 2000 10');
+        ]], {
+        }
+)
+
+local _sql_stat1 = box.space[box.schema.SQL_STAT1_ID]
+_sql_stat1:insert{'T1','T1ABC', {10000,5000,2000,10}}
+
+test:do_execsql_test(
+        "skip-scan-1.4.2",
+        [[
             ANALYZE t2;
             SELECT a,b,c,d FROM t1 WHERE b=345;
         ]], {
             "abc", 345, 7, 8, "def", 345, 9, 10
         }
 )
-
 
 test:finish_test()
