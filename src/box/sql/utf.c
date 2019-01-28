@@ -157,30 +157,31 @@ sqlUtf8Read(const unsigned char **pz	/* Pointer to string from which to read cha
  */
 /* #define TRANSLATE_TRACE 1 */
 
-/*
- * pZ is a UTF-8 encoded unicode string. If nByte is less than zero,
- * return the number of unicode characters in pZ up to (but not including)
- * the first 0x00 byte. If nByte is not less than zero, return the
- * number of unicode characters in the first nByte of pZ (or up to
- * the first 0x00, whichever comes first).
+/**
+ * Return number of symbols in the given string.
+ *
+ * Number of symbols != byte size of string because some symbols
+ * are encoded with more than one byte. Also note that all
+ * symbols from 'str' to 'str + byte_len' would be counted,
+ * even if there is a '\0' somewhere between them.
+ *
+ * This function is implemented to be fast and indifferent to
+ * correctness of string being processed. If input string has
+ * even one invalid utf-8 sequence, then the resulting length
+ * could be arbitary in these boundaries (0 < len < byte_len).
+ * @param str String to be counted.
+ * @param byte_len Byte length of given string.
+ * @return number of symbols in the given string.
  */
 int
-sqlUtf8CharLen(const char *zIn, int nByte)
+utf8_char_count(const unsigned char *str, int byte_len)
 {
-	int r = 0;
-	const u8 *z = (const u8 *)zIn;
-	const u8 *zTerm;
-	if (nByte >= 0) {
-		zTerm = &z[nByte];
-	} else {
-		zTerm = (const u8 *)(-1);
+	int symbol_count = 0;
+	for (int i = 0; i < byte_len;) {
+		SQL_UTF8_FWD_1_UNSAFE(str, i, byte_len);
+		symbol_count++;
 	}
-	assert(z <= zTerm);
-	while (*z != 0 && z < zTerm) {
-		SQL_SKIP_UTF8(z);
-		r++;
-	}
-	return r;
+	return symbol_count;
 }
 
 /* This test function is not currently used by the automated test-suite.

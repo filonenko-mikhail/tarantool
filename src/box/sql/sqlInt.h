@@ -3072,16 +3072,6 @@ struct TreeView {
 #endif				/* SQL_DEBUG */
 
 /*
- * Assuming zIn points to the first byte of a UTF-8 character,
- * advance zIn to point to the first byte of the next UTF-8 character.
- */
-#define SQL_SKIP_UTF8(zIn) {                        \
-  if( (*(zIn++))>=0xc0 ){                              \
-    while( (*zIn & 0xc0)==0x80 ){ zIn++; }             \
-  }                                                    \
-}
-
-/*
  * The sql_*_BKPT macros are substitutes for the error codes with
  * the same name but without the _BKPT suffix.  These macros invoke
  * routines that report the line-number on which the error originated
@@ -4143,11 +4133,51 @@ void
 sql_drop_foreign_key(struct Parse *parse_context, struct SrcList *table,
 		     struct Token *constraint);
 
+/**
+ * Counts the trail bytes for a UTF-8 lead byte of a valid UTF-8
+ * sequence. Returns 0 for 0..0xc1. Undefined for 0xf5..0xff.
+ * leadByte might be evaluated multiple times.
+ *
+ * @param leadByte The first byte of a UTF-8 sequence.
+ *                 Must be 0..0xff.
+ */
+#define SQL_UTF8_COUNT_TRAIL_BYTES_UNSAFE(leadByte) \
+    (((uint8_t)(leadByte) >= 0xc2) + ((uint8_t)(leadByte) >= 0xe0) + \
+    ((uint8_t)(leadByte) >= 0xf0))
+
+/**
+ * Advance the string offset from one code point boundary to the
+ * next. (Post-incrementing iteration.)
+ * "Unsafe" macro, assumes well-formed UTF-8.
+ *
+ * After the whole string is traversed, (str + i) points to the
+ * position right after the last element of the string (*).
+ *
+ * If resulting offset > byte_size then resulting offset is set
+ * to byte_size. This is to provide (*) in cases where it might
+ * be violated.
+ *
+ * SQL_UTF8_FWD_1_UNSAFE sometimes is used get the size of utf-8
+ * character subsequence and we don't want to get summary size
+ * which exceeds total string size (in bytes). Consider example:
+ *
+ * '0xE0' - this is invalid utf-8 string because it consists only
+ * of first byte of 3 byte sequence. After traverse, the
+ * offset == 2 and we set it to 1, to keep (*).
+ *
+ * @param s const uint8_t * string.
+ * @param i string offset.
+ * @param byte_size byte size of the string.
+ */
+#define SQL_UTF8_FWD_1_UNSAFE(str, i, byte_size) \
+    (i) += 1 + SQL_UTF8_COUNT_TRAIL_BYTES_UNSAFE((str)[i]); \
+    (i) = (i) <= (byte_size) ? (i) : (byte_size);
+
 void sqlDetach(Parse *, Expr *);
 int sqlAtoF(const char *z, double *, int);
 int sqlGetInt32(const char *, int *);
 int sqlAtoi(const char *);
-int sqlUtf8CharLen(const char *pData, int nByte);
+int utf8_char_count(const unsigned char *str, int byte_len);
 u32 sqlUtf8Read(const u8 **);
 LogEst sqlLogEst(u64);
 LogEst sqlLogEstAdd(LogEst, LogEst);
