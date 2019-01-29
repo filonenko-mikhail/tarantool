@@ -43,6 +43,7 @@
  */
 
 struct swim_task;
+struct ifaddrs;
 struct swim_scheduler;
 
 enum {
@@ -256,5 +257,26 @@ swim_task_destroy(struct swim_task *task)
 {
 	rlist_del_entry(task, in_queue_output);
 }
+
+/**
+ * Broadcast task. Besides usual task fields, stores a list of
+ * interfaces available for broadcast packets. The task works
+ * multiple times, each time sending a packet to one interface.
+ * After completion it is self-deleted.
+ */
+struct swim_bcast_task {
+	/** Base structure. */
+	struct swim_task base;
+	/** Port to use for broadcast. */
+	int port;
+	/** A list of interfaces. */
+	struct ifaddrs *addrs;
+	/** A next interface to send to. */
+	struct ifaddrs *i;
+};
+
+/** Create a new broadcast task with a specified port. */
+struct swim_bcast_task *
+swim_bcast_task_new(int port);
 
 #endif /* TARANTOOL_SWIM_IO_H_INCLUDED */
