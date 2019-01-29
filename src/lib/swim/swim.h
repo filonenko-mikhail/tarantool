@@ -93,6 +93,13 @@ swim_remove_member(struct swim *swim, const struct tt_uuid *uuid);
 int
 swim_probe_member(struct swim *swim, const char *uri);
 
+/**
+ * Broadcast a ping to all interfaces on a specified port. If a
+ * port is < 0, then a port of the SWIM instance is used.
+ */
+int
+swim_broadcast(struct swim *swim, int port);
+
 /** Dump member statuses into @a info. */
 void
 swim_info(struct swim *swim, struct info_handler *info);

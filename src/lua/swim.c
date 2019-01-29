@@ -403,6 +403,44 @@ lua_swim_quit(struct lua_State *L)
 	return 0;
 }
 
+/**
+ * Broadcast a ping over all network interfaces with a speicifed
+ * port. Port is optional and in a case of absence it is set to
+ * a port of the current instance. The Lua stack should contain a
+ * SWIM instance to broadcast from, and optionally a port.
+ * @param L Lua state.
+ * @retval 1 True.
+ * @retval 2 Nil and an error object. On invalid Lua parameters
+ *         and OOM it throws.
+ */
+static int
+lua_swim_broadcast(struct lua_State *L)
+{
+	struct swim *swim = lua_swim_ptr(L, 1);
+	if (swim == NULL)
+		return luaL_error(L, "Usage: swim:broadcast([port])");
+	int port = -1;
+	if (lua_gettop(L) > 1) {
+		if (! lua_isnumber(L, 2)) {
+			return luaL_error(L, "swim.broadcast: port should be "\
+					  "a number");
+		}
+		double dport = lua_tonumber(L, 2);
+		port = dport;
+		if (dport != (double) port) {
+			return luaL_error(L, "swim.broadcast: port should be "\
+					  "an integer");
+		}
+	}
+	if (swim_broadcast(swim, port) != 0) {
+		lua_pushnil(L);
+		luaT_pusherror(L, diag_last_error(diag_get()));
+		return 2;
+	}
+	lua_pushboolean(L, true);
+	return 1;
+}
+
 void
 tarantool_lua_swim_init(struct lua_State *L)
 {
@@ -415,6 +453,7 @@ tarantool_lua_swim_init(struct lua_State *L)
 		{"info", lua_swim_info},
 		{"probe_member", lua_swim_probe_member},
 		{"quit", lua_swim_quit},
+		{"broadcast", lua_swim_broadcast},
 		{NULL, NULL}
 	};
 	luaL_register_module(L, "swim", lua_swim_methods);
