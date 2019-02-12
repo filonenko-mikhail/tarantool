@@ -40,58 +40,218 @@
 #include <small/mempool.h>
 
 /**
- * Struct that is used as a key in BPS tree definition.
+ * The name of this implementation of the memtx tree object.
  */
-struct memtx_tree_key_data {
-	/** Sequence of msgpacked search fields. */
-	const char *key;
-	/** Number of msgpacked search fields. */
-	uint32_t part_count;
-};
+#ifndef MEMTX_TREE_NAME
+#error "MEMTX_TREE_NAME must be defined"
+#endif
 
 /**
- * BPS tree element vs key comparator.
- * Defined in header in order to allow compiler to inline it.
- * @param tuple - tuple to compare.
- * @param key_data - key to compare with.
- * @param def - key definition.
- * @retval 0  if tuple == key in terms of def.
- * @retval <0 if tuple < key in terms of def.
- * @retval >0 if tuple > key in terms of def.
+ * The type of data node stored in the tree. This object is
+ * expected to contain <struct tuple *tuple> payload. In a
+ * particular case, it can be directly struct tuple *.
  */
-static int
-memtx_tree_compare_key(const struct tuple *tuple,
-		       const struct memtx_tree_key_data *key_data,
-		       struct key_def *def)
-{
-	return tuple_compare_with_key(tuple, key_data->key,
-				      key_data->part_count, def);
-}
+#ifndef memtx_tree_elem_t
+#error "memtx_tree_elem_t must be defined"
+#endif
 
-#define BPS_TREE_NAME memtx_tree
+/**
+ * The type of key used in comparisons with data nodes stored
+ * in the tree. This object is expected to contain
+ * <const char *key, uint32_t part_count> payload.
+ */
+#ifndef memtx_tree_key_t
+#error "memtx_tree_key_t must be defined"
+#endif
+
+/**
+ * Perform a comparison of memtx_tree_elem_t nodes.
+ *
+ * void
+ * MEMTX_TREE_COMPARE(memtx_tree_elem_t *elem_a,
+ *                    memtx_tree_elem_t *elem_b,
+ *                    struct key_def *key_def);
+ */
+#ifndef MEMTX_TREE_COMPARE
+#error "MEMTX_TREE_COMPARE must be defined"
+#endif
+
+/**
+ * Perform a comparison of memtx_tree_elem_t with memtx_tree_key_t.
+ *
+ * void
+ * MEMTX_TREE_COMPARE_KEY(memtx_tree_elem_t *elem,
+ *                        memtx_tree_key_t *key,
+ *                        struct key_def *key_def);
+ */
+#ifndef MEMTX_TREE_COMPARE_KEY
+#error "MEMTX_TREE_COMPARE_KEY must be defined"
+#endif
+
+/**
+ * Perform memtx_tree_elem_t initialization.
+ *
+ * void
+ * MEMTX_TREE_ELEM_SET(memtx_tree_elem_t *elem,
+ *                     struct tuple *tuple,
+ *                     struct key_def *key_def);
+ */
+#ifndef MEMTX_TREE_ELEM_SET
+#error "MEMTX_TREE_ELEM_SET must be defined"
+#endif
+
+/**
+ * Perform memtx_tree_elem_t cleanup.
+ *
+ * void
+ * MEMTX_TREE_ELEM_CLEAR(memtx_tree_elem_t *elem);
+ */
+#ifndef MEMTX_TREE_ELEM_CLEAR
+#error "MEMTX_TREE_ELEM_CLEAR must be defined"
+#endif
+
+/**
+ * Perform memtx_tree_key_t initialization.
+ *
+ * void
+ * MEMTX_TREE_KEY_SET(memtx_tree_key_t *key, const char *key_val,
+ *                    uint32_t part_count_val,
+ *                    struct key_def *key_def);
+ */
+#ifndef MEMTX_TREE_KEY_SET
+#error "MEMTX_TREE_KEY_SET must be defined"
+#endif
+
+/**
+ * Extract memtx_tree_elem_t mandatory <struct tuple *tuple>
+ * payload.
+ *
+ * struct tuple *
+ * MEMTX_TREE_ELEM_GET(memtx_tree_elem_t *elem);
+ */
+#ifndef MEMTX_TREE_ELEM_GET
+#error "MEMTX_TREE_ELEM_GET must be defined"
+#endif
+
+/**
+ * Extract memtx_tree_key_t mandatory payload:
+ * <const char *key, uint32_t part_count>.
+ *
+ * const char *
+ * MEMTX_TREE_KEY_GET(memtx_tree_key_t *key, uin32_t *part_count);
+ */
+#ifndef MEMTX_TREE_KEY_GET
+#error "MEMTX_TREE_KEY_GET must be defined"
+#endif
+
+/**
+ * Test if memtx_tree_elem_t a and b represent exactly the
+ * same data. While MEMTX_TREE_COMPARE performs binary data
+ * comparison, this helper checks if the elements are identical,
+ * i.e. initialized by MEMTX_TREE_ELEM_SET with the same arguments.
+ *
+ * bool
+ * MEMTX_TREE_IDENTICAL(memtx_tree_elem_t *elem_a,
+ * 			memtx_tree_elem_t *elem_b);
+ */
+#ifndef MEMTX_TREE_IDENTICAL
+#error "MEMTX_TREE_IDENTICAL must be defined"
+#endif
+
+#define bps_tree_elem_t memtx_tree_elem_t
+#define bps_tree_key_t memtx_tree_key_t *
+#define bps_tree_arg_t struct key_def *
+#define BPS_TREE_NAME CONCAT3(MEMTX_TREE_NAME, _, tree)
 #define BPS_TREE_BLOCK_SIZE (512)
 #define BPS_TREE_EXTENT_SIZE MEMTX_EXTENT_SIZE
-#define BPS_TREE_COMPARE(a, b, arg) tuple_compare(a, b, arg)
-#define BPS_TREE_COMPARE_KEY(a, b, arg) memtx_tree_compare_key(a, b, arg)
-#define bps_tree_elem_t struct tuple *
-#define bps_tree_key_t struct memtx_tree_key_data *
-#define bps_tree_arg_t struct key_def *
+#define BPS_TREE_COMPARE(a, b, arg) MEMTX_TREE_COMPARE(&a, &b, arg)
+#define BPS_TREE_COMPARE_KEY(a, b, arg) MEMTX_TREE_COMPARE_KEY(&a, b, arg)
+#define BPS_TREE_IDENTICAL(a, b) MEMTX_TREE_IDENTICAL(&a, &b)
 
 #include "salad/bps_tree.h"
 
+#undef bps_tree_elem_t
+#undef bps_tree_key_t
+#undef bps_tree_arg_t
 #undef BPS_TREE_NAME
 #undef BPS_TREE_BLOCK_SIZE
 #undef BPS_TREE_EXTENT_SIZE
 #undef BPS_TREE_COMPARE
 #undef BPS_TREE_COMPARE_KEY
-#undef bps_tree_elem_t
-#undef bps_tree_key_t
-#undef bps_tree_arg_t
+#undef BPS_TREE_IDENTICAL
+
+#define memtx_tree CONCAT3(MEMTX_TREE_NAME, _, tree)
+#define _tree_api_name(postfix) CONCAT5(MEMTX_TREE_NAME, _, tree, _, postfix)
+#define memtx_tree_iterator _tree_api_name(iterator)
+#define memtx_tree_iterator_is_invalid _tree_api_name(iterator_is_invalid)
+#define memtx_tree_iterator_first _tree_api_name(iterator_first)
+#define memtx_tree_iterator_last _tree_api_name(iterator_last)
+#define memtx_tree_iterator_get_elem _tree_api_name(iterator_get_elem)
+#define memtx_tree_iterator_next _tree_api_name(iterator_next)
+#define memtx_tree_iterator_prev _tree_api_name(iterator_prev)
+#define memtx_tree_iterator_freeze _tree_api_name(iterator_freeze)
+#define memtx_tree_iterator_destroy _tree_api_name(iterator_destroy)
+#define memtx_tree_create _tree_api_name(create)
+#define memtx_tree_build _tree_api_name(build)
+#define memtx_tree_destroy _tree_api_name(destroy)
+#define memtx_tree_find _tree_api_name(find)
+#define memtx_tree_insert _tree_api_name(insert)
+#define memtx_tree_delete _tree_api_name(delete)
+#define memtx_tree_size _tree_api_name(size)
+#define memtx_tree_mem_used _tree_api_name(mem_used)
+#define memtx_tree_random _tree_api_name(random)
+#define memtx_tree_invalid_iterator _tree_api_name(invalid_iterator)
+#define memtx_tree_lower_bound _tree_api_name(lower_bound)
+#define memtx_tree_upper_bound _tree_api_name(upper_bound)
+#define memtx_tree_lower_bound_elem _tree_api_name(lower_bound_elem)
+#define memtx_tree_upper_bound_elem _tree_api_name(upper_bound_elem)
+
+#define _api_name(postfix) CONCAT3(MEMTX_TREE_NAME, _, postfix)
+#define memtx_tree_index _api_name(index)
+#define memtx_tree_qcompare _api_name(qcompare)
+#define tree_iterator _api_name(iterator)
+#define tree_iterator_free _api_name(iterator_free)
+#define tree_iterator_cast _api_name(iterator_cast)
+#define tree_iterator_dummie _api_name(iterator_dummie)
+#define tree_iterator_next _api_name(iterator_next)
+#define tree_iterator_prev _api_name(iterator_prev)
+#define tree_iterator_next_equal _api_name(iterator_next_equal)
+#define tree_iterator_prev_equal _api_name(iterator_prev_equal)
+#define tree_iterator_set_next_method _api_name(iterator_set_next_method)
+#define tree_iterator_start _api_name(iterator_start)
+#define memtx_tree_index_cmp_def _api_name(index_cmp_def)
+#define memtx_tree_index_free _api_name(index_free)
+#define memtx_tree_index_gc_run _api_name(index_gc_run)
+#define memtx_tree_index_gc_free _api_name(index_gc_free)
+#define memtx_tree_index_gc_vtab _api_name(index_gc_vtab)
+#define memtx_tree_index_destroy _api_name(index_destroy)
+#define memtx_tree_index_update_def _api_name(index_update_def)
+#define memtx_tree_index_depends_on_pk _api_name(index_depends_on_pk)
+#define memtx_tree_index_size _api_name(index_size)
+#define memtx_tree_index_bsize _api_name(index_bsize)
+#define memtx_tree_index_random _api_name(index_random)
+#define memtx_tree_index_count _api_name(index_count)
+#define memtx_tree_index_get _api_name(index_get)
+#define memtx_tree_index_insert_tuple _api_name(index_insert_tuple)
+#define memtx_tree_index_delete_tuple _api_name(index_delete_tuple)
+#define memtx_tree_index_replace _api_name(index_replace)
+#define memtx_tree_index_create_iterator _api_name(index_create_iterator)
+#define memtx_tree_index_begin_build _api_name(index_begin_build)
+#define memtx_tree_index_build_next _api_name(index_build_next)
+#define memtx_tree_index_reserve _api_name(index_reserve)
+#define memtx_tree_index_end_build _api_name(index_end_build)
+#define tree_snapshot_iterator _api_name(snapshot_iterator)
+#define tree_snapshot_iterator_free _api_name(snapshot_iterator_free)
+#define tree_snapshot_iterator_next _api_name(snapshot_iterator_next)
+#define memtx_tree_index_create_snapshot_iterator\
+	_api_name(index_create_snapshot_iterator)
+#define memtx_tree_index_vtab _api_name(index_vtab)
+#define memtx_tree_index_new _api_name(index_new)
 
 struct memtx_tree_index {
 	struct index base;
 	struct memtx_tree tree;
-	struct tuple **build_array;
+	memtx_tree_elem_t *build_array;
 	size_t build_array_size, build_array_alloc_size;
 	struct memtx_gc_task gc_task;
 	struct memtx_tree_iterator gc_iterator;
@@ -102,8 +262,8 @@ struct memtx_tree_index {
 static int
 memtx_tree_qcompare(const void* a, const void *b, void *c)
 {
-	return tuple_compare(*(struct tuple **)a,
-		*(struct tuple **)b, (struct key_def *)c);
+	return MEMTX_TREE_COMPARE((memtx_tree_elem_t *)a,
+				  (memtx_tree_elem_t *)b, c);
 }
 
 /* {{{ MemtxTree Iterators ****************************************/
@@ -113,8 +273,8 @@ struct tree_iterator {
 	struct index_def *index_def;
 	struct memtx_tree_iterator tree_iterator;
 	enum iterator_type type;
-	struct memtx_tree_key_data key_data;
-	struct tuple *current_tuple;
+	memtx_tree_key_t key_data;
+	memtx_tree_elem_t current;
 	/** Memory pool the iterator was allocated from. */
 	struct mempool *pool;
 };
@@ -127,7 +287,7 @@ static void
 tree_iterator_free(struct iterator *iterator);
 
 static inline struct tree_iterator *
-tree_iterator(struct iterator *it)
+tree_iterator_cast(struct iterator *it)
 {
 	assert(it->free == tree_iterator_free);
 	return (struct tree_iterator *) it;
@@ -136,9 +296,10 @@ tree_iterator(struct iterator *it)
 static void
 tree_iterator_free(struct iterator *iterator)
 {
-	struct tree_iterator *it = tree_iterator(iterator);
-	if (it->current_tuple != NULL)
-		tuple_unref(it->current_tuple);
+	struct tree_iterator *it = tree_iterator_cast(iterator);
+	struct tuple *tuple = MEMTX_TREE_ELEM_GET(&it->current);
+	if (tuple != NULL)
+		tuple_unref(tuple);
 	mempool_free(it->pool, it);
 }
 
@@ -153,25 +314,27 @@ tree_iterator_dummie(struct iterator *iterator, struct tuple **ret)
 static int
 tree_iterator_next(struct iterator *iterator, struct tuple **ret)
 {
-	struct tuple **res;
-	struct tree_iterator *it = tree_iterator(iterator);
-	assert(it->current_tuple != NULL);
-	struct tuple **check = memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
-	if (check == NULL || *check != it->current_tuple)
+	struct tree_iterator *it = tree_iterator_cast(iterator);
+	assert(MEMTX_TREE_ELEM_GET(&it->current) != NULL);
+	memtx_tree_elem_t *check =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
+	if (check == NULL || !MEMTX_TREE_IDENTICAL(check, &it->current)) {
 		it->tree_iterator =
-			memtx_tree_upper_bound_elem(it->tree, it->current_tuple,
-						    NULL);
-	else
+			memtx_tree_upper_bound_elem(it->tree, it->current, NULL);
+	} else {
 		memtx_tree_iterator_next(it->tree, &it->tree_iterator);
-	tuple_unref(it->current_tuple);
-	it->current_tuple = NULL;
-	res = memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
+	}
+	tuple_unref(MEMTX_TREE_ELEM_GET(&it->current));
+	memtx_tree_elem_t *res =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
 	if (res == NULL) {
 		iterator->next = tree_iterator_dummie;
+		MEMTX_TREE_ELEM_CLEAR(&it->current);
 		*ret = NULL;
 	} else {
-		*ret = it->current_tuple = *res;
-		tuple_ref(it->current_tuple);
+		*ret = MEMTX_TREE_ELEM_GET(res);
+		tuple_ref(*ret);
+		it->current = *res;
 	}
 	return 0;
 }
@@ -179,23 +342,26 @@ tree_iterator_next(struct iterator *iterator, struct tuple **ret)
 static int
 tree_iterator_prev(struct iterator *iterator, struct tuple **ret)
 {
-	struct tree_iterator *it = tree_iterator(iterator);
-	assert(it->current_tuple != NULL);
-	struct tuple **check = memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
-	if (check == NULL || *check != it->current_tuple)
+	struct tree_iterator *it = tree_iterator_cast(iterator);
+	assert(MEMTX_TREE_ELEM_GET(&it->current) != NULL);
+	memtx_tree_elem_t *check =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
+	if (check == NULL || !MEMTX_TREE_IDENTICAL(check, &it->current)) {
 		it->tree_iterator =
-			memtx_tree_lower_bound_elem(it->tree, it->current_tuple,
-						    NULL);
+			memtx_tree_lower_bound_elem(it->tree, it->current, NULL);
+	}
 	memtx_tree_iterator_prev(it->tree, &it->tree_iterator);
-	tuple_unref(it->current_tuple);
-	it->current_tuple = NULL;
-	struct tuple **res = memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
+	tuple_unref(MEMTX_TREE_ELEM_GET(&it->current));
+	memtx_tree_elem_t *res =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
 	if (!res) {
 		iterator->next = tree_iterator_dummie;
+		MEMTX_TREE_ELEM_CLEAR(&it->current);
 		*ret = NULL;
 	} else {
-		*ret = it->current_tuple = *res;
-		tuple_ref(it->current_tuple);
+		*ret = MEMTX_TREE_ELEM_GET(res);
+		tuple_ref(*ret);
+		it->current = *res;
 	}
 	return 0;
 }
@@ -203,28 +369,29 @@ tree_iterator_prev(struct iterator *iterator, struct tuple **ret)
 static int
 tree_iterator_next_equal(struct iterator *iterator, struct tuple **ret)
 {
-	struct tree_iterator *it = tree_iterator(iterator);
-	assert(it->current_tuple != NULL);
-	struct tuple **check = memtx_tree_iterator_get_elem(it->tree,
-						&it->tree_iterator);
-	if (check == NULL || *check != it->current_tuple)
+	struct tree_iterator *it = tree_iterator_cast(iterator);
+	assert(MEMTX_TREE_ELEM_GET(&it->current) != NULL);
+	memtx_tree_elem_t *check =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
+	if (check == NULL || !MEMTX_TREE_IDENTICAL(check, &it->current)) {
 		it->tree_iterator =
-			memtx_tree_upper_bound_elem(it->tree, it->current_tuple,
-						    NULL);
-	else
+			memtx_tree_upper_bound_elem(it->tree, it->current, NULL);
+	} else {
 		memtx_tree_iterator_next(it->tree, &it->tree_iterator);
-	tuple_unref(it->current_tuple);
-	it->current_tuple = NULL;
-	struct tuple **res = memtx_tree_iterator_get_elem(it->tree,
-						&it->tree_iterator);
+	}
+	tuple_unref(MEMTX_TREE_ELEM_GET(&it->current));
+	memtx_tree_elem_t *res =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
 	/* Use user key def to save a few loops. */
-	if (!res || memtx_tree_compare_key(*res, &it->key_data,
+	if (!res || MEMTX_TREE_COMPARE_KEY(res, &it->key_data,
 					   it->index_def->key_def) != 0) {
 		iterator->next = tree_iterator_dummie;
+		MEMTX_TREE_ELEM_CLEAR(&it->current);
 		*ret = NULL;
 	} else {
-		*ret = it->current_tuple = *res;
-		tuple_ref(it->current_tuple);
+		*ret = MEMTX_TREE_ELEM_GET(res);
+		tuple_ref(*ret);
+		it->current = *res;
 	}
 	return 0;
 }
@@ -232,27 +399,29 @@ tree_iterator_next_equal(struct iterator *iterator, struct tuple **ret)
 static int
 tree_iterator_prev_equal(struct iterator *iterator, struct tuple **ret)
 {
-	struct tree_iterator *it = tree_iterator(iterator);
-	assert(it->current_tuple != NULL);
-	struct tuple **check = memtx_tree_iterator_get_elem(it->tree,
-						&it->tree_iterator);
-	if (check == NULL || *check != it->current_tuple)
+	struct tree_iterator *it = tree_iterator_cast(iterator);
+	assert(MEMTX_TREE_ELEM_GET(&it->current) != NULL);
+	memtx_tree_elem_t *check =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
+	if (check == NULL || !MEMTX_TREE_IDENTICAL(check, &it->current)) {
 		it->tree_iterator =
-			memtx_tree_lower_bound_elem(it->tree, it->current_tuple,
-						    NULL);
+			memtx_tree_lower_bound_elem(it->tree, it->current, NULL);
+	}
 	memtx_tree_iterator_prev(it->tree, &it->tree_iterator);
-	tuple_unref(it->current_tuple);
-	it->current_tuple = NULL;
-	struct tuple **res = memtx_tree_iterator_get_elem(it->tree,
-						&it->tree_iterator);
+	tuple_unref(MEMTX_TREE_ELEM_GET(&it->current));
+	memtx_tree_elem_t *res =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
 	/* Use user key def to save a few loops. */
-	if (!res || memtx_tree_compare_key(*res, &it->key_data,
-					   it->index_def->key_def) != 0) {
+	if (!res ||
+	    MEMTX_TREE_COMPARE_KEY(res, &it->key_data,
+					 it->index_def->key_def) != 0) {
 		iterator->next = tree_iterator_dummie;
+		MEMTX_TREE_ELEM_CLEAR(&it->current);
 		*ret = NULL;
 	} else {
-		*ret = it->current_tuple = *res;
-		tuple_ref(it->current_tuple);
+		*ret = MEMTX_TREE_ELEM_GET(res);
+		tuple_ref(*ret);
+		it->current = *res;
 	}
 	return 0;
 }
@@ -260,7 +429,7 @@ tree_iterator_prev_equal(struct iterator *iterator, struct tuple **ret)
 static void
 tree_iterator_set_next_method(struct tree_iterator *it)
 {
-	assert(it->current_tuple != NULL);
+	assert(MEMTX_TREE_ELEM_GET(&it->current) != NULL);
 	switch (it->type) {
 	case ITER_EQ:
 		it->base.next = tree_iterator_next_equal;
@@ -289,13 +458,15 @@ static int
 tree_iterator_start(struct iterator *iterator, struct tuple **ret)
 {
 	*ret = NULL;
-	struct tree_iterator *it = tree_iterator(iterator);
+	struct tree_iterator *it = tree_iterator_cast(iterator);
 	it->base.next = tree_iterator_dummie;
 	const struct memtx_tree *tree = it->tree;
 	enum iterator_type type = it->type;
 	bool exact = false;
-	assert(it->current_tuple == NULL);
-	if (it->key_data.key == 0) {
+	assert(MEMTX_TREE_ELEM_GET(&it->current) == NULL);
+	uint32_t part_count;
+	const char *key = MEMTX_TREE_KEY_GET(&it->key_data, &part_count);
+	if (key == NULL) {
 		if (iterator_type_is_reverse(it->type))
 			it->tree_iterator = memtx_tree_iterator_last(tree);
 		else
@@ -331,12 +502,13 @@ tree_iterator_start(struct iterator *iterator, struct tuple **ret)
 		}
 	}
 
-	struct tuple **res = memtx_tree_iterator_get_elem(it->tree,
-						&it->tree_iterator);
+	memtx_tree_elem_t *res =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
 	if (!res)
 		return 0;
-	*ret = it->current_tuple = *res;
-	tuple_ref(it->current_tuple);
+	*ret = MEMTX_TREE_ELEM_GET(res);
+	tuple_ref(*ret);
+	it->current = *res;
 	tree_iterator_set_next_method(it);
 	return 0;
 }
@@ -390,7 +562,8 @@ memtx_tree_index_gc_run(struct memtx_gc_task *task, bool *done)
 
 	unsigned int loops = 0;
 	while (!memtx_tree_iterator_is_invalid(itr)) {
-		struct tuple *tuple = *memtx_tree_iterator_get_elem(tree, itr);
+		memtx_tree_elem_t *res = memtx_tree_iterator_get_elem(tree, itr);
+		struct tuple *tuple = MEMTX_TREE_ELEM_GET(res);
 		memtx_tree_iterator_next(tree, itr);
 		tuple_unref(tuple);
 		if (++loops >= YIELD_LOOPS) {
@@ -470,8 +643,8 @@ static int
 memtx_tree_index_random(struct index *base, uint32_t rnd, struct tuple **result)
 {
 	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
-	struct tuple **res = memtx_tree_random(&index->tree, rnd);
-	*result = res != NULL ? *res : NULL;
+	memtx_tree_elem_t *res = memtx_tree_random(&index->tree, rnd);
+	*result = res != NULL ? MEMTX_TREE_ELEM_GET(res) : NULL;
 	return 0;
 }
 
@@ -491,12 +664,36 @@ memtx_tree_index_get(struct index *base, const char *key,
 	assert(base->def->opts.is_unique &&
 	       part_count == base->def->key_def->part_count);
 	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
-	struct memtx_tree_key_data key_data;
-	key_data.key = key;
-	key_data.part_count = part_count;
-	struct tuple **res = memtx_tree_find(&index->tree, &key_data);
-	*result = res != NULL ? *res : NULL;
+	memtx_tree_key_t key_data;
+	struct key_def *cmp_def = memtx_tree_index_cmp_def(index);
+	MEMTX_TREE_KEY_SET(&key_data, key, part_count, cmp_def);
+	memtx_tree_elem_t *res = memtx_tree_find(&index->tree, &key_data);
+	*result = res != NULL ? MEMTX_TREE_ELEM_GET(res) : NULL;
 	return 0;
+}
+
+static int
+memtx_tree_index_insert_tuple(struct index *base, struct tuple *tuple,
+			      struct tuple **replaced)
+{
+	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
+	memtx_tree_elem_t data;
+	MEMTX_TREE_ELEM_SET(&data, tuple, index->tree.arg);
+	memtx_tree_elem_t data_replaced;
+	MEMTX_TREE_ELEM_CLEAR(&data_replaced);
+	int rc = memtx_tree_insert(&index->tree, data, &data_replaced);
+	if (replaced != NULL)
+		*replaced = MEMTX_TREE_ELEM_GET(&data_replaced);
+	return rc;
+}
+
+static void
+memtx_tree_index_delete_tuple(struct index *base, struct tuple *tuple)
+{
+	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
+	memtx_tree_elem_t data;
+	MEMTX_TREE_ELEM_SET(&data, tuple, index->tree.arg);
+	memtx_tree_delete(&index->tree, data);
 }
 
 static int
@@ -504,13 +701,13 @@ memtx_tree_index_replace(struct index *base, struct tuple *old_tuple,
 			 struct tuple *new_tuple, enum dup_replace_mode mode,
 			 struct tuple **result)
 {
-	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
 	if (new_tuple) {
 		struct tuple *dup_tuple = NULL;
 
 		/* Try to optimistically replace the new_tuple. */
-		int tree_res = memtx_tree_insert(&index->tree,
-						 new_tuple, &dup_tuple);
+		int tree_res =
+			memtx_tree_index_insert_tuple(base, new_tuple,
+						      &dup_tuple);
 		if (tree_res) {
 			diag_set(OutOfMemory, MEMTX_EXTENT_SIZE,
 				 "memtx_tree_index", "replace");
@@ -520,9 +717,9 @@ memtx_tree_index_replace(struct index *base, struct tuple *old_tuple,
 		uint32_t errcode = replace_check_dup(old_tuple,
 						     dup_tuple, mode);
 		if (errcode) {
-			memtx_tree_delete(&index->tree, new_tuple);
+			memtx_tree_index_delete_tuple(base, new_tuple);
 			if (dup_tuple)
-				memtx_tree_insert(&index->tree, dup_tuple, 0);
+				memtx_tree_index_insert_tuple(base, dup_tuple, 0);
 			struct space *sp = space_cache_find(base->def->space_id);
 			if (sp != NULL)
 				diag_set(ClientError, errcode, base->def->name,
@@ -534,9 +731,8 @@ memtx_tree_index_replace(struct index *base, struct tuple *old_tuple,
 			return 0;
 		}
 	}
-	if (old_tuple) {
-		memtx_tree_delete(&index->tree, old_tuple);
-	}
+	if (old_tuple)
+		memtx_tree_index_delete_tuple(base, old_tuple);
 	*result = old_tuple;
 	return 0;
 }
@@ -575,12 +771,12 @@ memtx_tree_index_create_iterator(struct index *base, enum iterator_type type,
 	it->base.next = tree_iterator_start;
 	it->base.free = tree_iterator_free;
 	it->type = type;
-	it->key_data.key = key;
-	it->key_data.part_count = part_count;
+	struct key_def *cmp_def = memtx_tree_index_cmp_def(index);
+	MEMTX_TREE_KEY_SET(&it->key_data, key, part_count, cmp_def);
 	it->index_def = base->def;
 	it->tree = &index->tree;
 	it->tree_iterator = memtx_tree_invalid_iterator();
-	it->current_tuple = NULL;
+	MEMTX_TREE_ELEM_CLEAR(&it->current);
 	return (struct iterator *)it;
 }
 
@@ -598,8 +794,8 @@ memtx_tree_index_reserve(struct index *base, uint32_t size_hint)
 	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
 	if (size_hint < index->build_array_alloc_size)
 		return 0;
-	struct tuple **tmp = (struct tuple **)realloc(index->build_array,
-						      size_hint * sizeof(*tmp));
+	memtx_tree_elem_t *tmp =
+		realloc(index->build_array, size_hint * sizeof(*tmp));
 	if (tmp == NULL) {
 		diag_set(OutOfMemory, size_hint * sizeof(*tmp),
 			 "memtx_tree_index", "reserve");
@@ -615,20 +811,20 @@ memtx_tree_index_build_next(struct index *base, struct tuple *tuple)
 {
 	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
 	if (index->build_array == NULL) {
-		index->build_array = (struct tuple **)malloc(MEMTX_EXTENT_SIZE);
+		index->build_array = (memtx_tree_elem_t *)malloc(MEMTX_EXTENT_SIZE);
 		if (index->build_array == NULL) {
 			diag_set(OutOfMemory, MEMTX_EXTENT_SIZE,
 				 "memtx_tree_index", "build_next");
 			return -1;
 		}
 		index->build_array_alloc_size =
-			MEMTX_EXTENT_SIZE / sizeof(struct tuple*);
+			MEMTX_EXTENT_SIZE / sizeof(index->build_array[0]);
 	}
 	assert(index->build_array_size <= index->build_array_alloc_size);
 	if (index->build_array_size == index->build_array_alloc_size) {
 		index->build_array_alloc_size = index->build_array_alloc_size +
 					index->build_array_alloc_size / 2;
-		struct tuple **tmp = (struct tuple **)
+		memtx_tree_elem_t *tmp =
 			realloc(index->build_array,
 				index->build_array_alloc_size * sizeof(*tmp));
 		if (tmp == NULL) {
@@ -638,7 +834,9 @@ memtx_tree_index_build_next(struct index *base, struct tuple *tuple)
 		}
 		index->build_array = tmp;
 	}
-	index->build_array[index->build_array_size++] = tuple;
+	memtx_tree_elem_t *elem =
+		&index->build_array[index->build_array_size++];
+	MEMTX_TREE_ELEM_SET(elem, tuple, memtx_tree_index_cmp_def(index));
 	return 0;
 }
 
@@ -648,10 +846,9 @@ memtx_tree_index_end_build(struct index *base)
 	struct memtx_tree_index *index = (struct memtx_tree_index *)base;
 	struct key_def *cmp_def = memtx_tree_index_cmp_def(index);
 	qsort_arg(index->build_array, index->build_array_size,
-		  sizeof(struct tuple *),
-		  memtx_tree_qcompare, cmp_def);
+		  sizeof(index->build_array[0]), memtx_tree_qcompare, cmp_def);
 	memtx_tree_build(&index->tree, index->build_array,
-			 index->build_array_size);
+		       index->build_array_size);
 
 	free(index->build_array);
 	index->build_array = NULL;
@@ -682,12 +879,12 @@ tree_snapshot_iterator_next(struct snapshot_iterator *iterator, uint32_t *size)
 	assert(iterator->free == tree_snapshot_iterator_free);
 	struct tree_snapshot_iterator *it =
 		(struct tree_snapshot_iterator *)iterator;
-	struct tuple **res = memtx_tree_iterator_get_elem(it->tree,
-						&it->tree_iterator);
+	memtx_tree_elem_t *res =
+		memtx_tree_iterator_get_elem(it->tree, &it->tree_iterator);
 	if (res == NULL)
 		return NULL;
 	memtx_tree_iterator_next(it->tree, &it->tree_iterator);
-	return tuple_data_range(*res, size);
+	return tuple_data_range(MEMTX_TREE_ELEM_GET(res), size);
 }
 
 /**
@@ -766,3 +963,70 @@ memtx_tree_index_new(struct memtx_engine *memtx, struct index_def *def)
 			  memtx_index_extent_free, memtx);
 	return &index->base;
 }
+
+#undef _tree_api_name
+#undef memtx_tree
+#undef memtx_tree_iterator
+#undef memtx_tree_iterator_is_invalid
+#undef memtx_tree_iterator_first
+#undef memtx_tree_iterator_last
+#undef memtx_tree_iterator_get_elem
+#undef memtx_tree_iterator_next
+#undef memtx_tree_iterator_prev
+#undef memtx_tree_iterator_freeze
+#undef memtx_tree_iterator_destroy
+#undef memtx_tree_create
+#undef memtx_tree_build
+#undef memtx_tree_destroy
+#undef memtx_tree_find
+#undef memtx_tree_insert
+#undef memtx_tree_delete
+#undef memtx_tree_size
+#undef memtx_tree_mem_used
+#undef memtx_tree_random
+#undef memtx_tree_invalid_iterator
+#undef memtx_tree_lower_bound
+#undef memtx_tree_upper_bound
+#undef memtx_tree_lower_bound_elem
+#undef memtx_tree_upper_bound_elem
+
+#undef _api_name
+#undef memtx_tree_index
+#undef memtx_tree_qcompare
+#undef tree_iterator
+#undef tree_iterator_free
+#undef tree_iterator_cast
+#undef tree_iterator_dummie
+#undef tree_iterator_next
+#undef tree_iterator_prev
+#undef tree_iterator_next_equal
+#undef tree_iterator_prev_equal
+#undef tree_iterator_set_next_method
+#undef tree_iterator_start
+#undef memtx_tree_index_cmp_def
+#undef memtx_tree_index_free
+#undef memtx_tree_index_gc_run
+#undef memtx_tree_index_gc_free
+#undef memtx_tree_index_gc_vtab
+#undef memtx_tree_index_destroy
+#undef memtx_tree_index_update_def
+#undef memtx_tree_index_depends_on_pk
+#undef memtx_tree_index_size
+#undef memtx_tree_index_bsize
+#undef memtx_tree_index_random
+#undef memtx_tree_index_count
+#undef memtx_tree_index_get
+#undef memtx_tree_index_insert_tuple
+#undef memtx_tree_index_delete_tuple
+#undef memtx_tree_index_replace
+#undef memtx_tree_index_create_iterator
+#undef memtx_tree_index_begin_build
+#undef memtx_tree_index_build_next
+#undef memtx_tree_index_reserve
+#undef memtx_tree_index_end_build
+#undef tree_snapshot_iterator
+#undef tree_snapshot_iterator_free
+#undef tree_snapshot_iterator_next
+#undef tree_index_create_snapshot_iterator
+#undef memtx_tree_index_vtab
+#undef memtx_tree_index_new
