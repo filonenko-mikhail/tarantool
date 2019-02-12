@@ -62,7 +62,7 @@ struct memtx_basic_tree_key_data {
 #define MEMTX_TREE_IDENTICAL(elem_a_ptr, elem_b_ptr)				\
 	({*elem_a_ptr == *elem_b_ptr;})
 
-#include "memtx_tree.c"
+#include "memtx_tree_impl.h"
 
 #undef memtx_tree_key_t
 #undef memtx_tree_elem_t
