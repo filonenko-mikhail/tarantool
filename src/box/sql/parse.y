@@ -1397,19 +1397,19 @@ tridxby ::= NOT INDEXED. {
 // UPDATE 
 trigger_cmd(A) ::=
    UPDATE orconf(R) trnm(X) tridxby SET setlist(Y) where_opt(Z).  
-   {A = sqlTriggerUpdateStep(pParse->db, &X, Y, Z, R);}
+   {A = sql_trigger_update_step(pParse, &X, Y, Z, R);}
 
 // INSERT
 trigger_cmd(A) ::= insert_cmd(R) INTO trnm(X) idlist_opt(F) select(S).
-   {A = sqlTriggerInsertStep(pParse->db, &X, F, S, R);/*A-overwrites-R*/}
+   {A = sql_trigger_insert_step(pParse, &X, F, S, R);/*A-overwrites-R*/}
 
 // DELETE
 trigger_cmd(A) ::= DELETE FROM trnm(X) tridxby where_opt(Y).
-   {A = sqlTriggerDeleteStep(pParse->db, &X, Y);}
+   {A = sql_trigger_delete_step(pParse, &X, Y);}
 
 // SELECT
 trigger_cmd(A) ::= select(X).
-   {A = sqlTriggerSelectStep(pParse->db, X); /*A-overwrites-X*/}
+   {A = sql_trigger_select_step(pParse, X); /*A-overwrites-X*/}
 
 // The special RAISE expression that may occur in trigger programs
 expr(A) ::= RAISE(X) LP IGNORE RP(Y).  {

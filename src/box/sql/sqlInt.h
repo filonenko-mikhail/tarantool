@@ -4154,12 +4154,69 @@ vdbe_code_row_trigger_direct(struct Parse *parser, struct sql_trigger *trigger,
 			     int ignore_jump);
 
 void sqlDeleteTriggerStep(sql *, TriggerStep *);
-TriggerStep *sqlTriggerSelectStep(sql *, Select *);
-TriggerStep *sqlTriggerInsertStep(sql *, Token *, IdList *,
-				      Select *, u8);
-TriggerStep *sqlTriggerUpdateStep(sql *, Token *, ExprList *, Expr *,
-				      u8);
-TriggerStep *sqlTriggerDeleteStep(sql *, Token *, Expr *);
+
+/**
+ * Turn a SELECT statement (that the pSelect parameter points to)
+ * into a trigger step. Return a pointer to a TriggerStep
+ * structure.
+ * The parser calls this routine when it finds a SELECT statement in
+ * body of a TRIGGER.
+ * @param parser The parsing context.
+ * @param select The SELECT statement to process.
+ * @retval not NULL TriggerStep object on success, NULL otherwise.
+ */
+struct TriggerStep *
+sql_trigger_select_step(struct Parse *parser, struct Select *select);
+
+/**
+ * Build a trigger step out of an INSERT statement. Return a
+ * pointer to the new trigger step.
+ * The parser calls this routine when it sees an INSERT inside the
+ * body of a trigger.
+ * @param parser The parsing context.
+ * @param table_name Name of the table into which we insert.
+ * @param column_list List of columns in table to insert into.
+ * @param select The SELECT statement that supplies values.
+ * @param orconf The conflict algorithm
+ *               (ON_CONFLICT_ACTION_ABORT, _REPLACE, etc.).
+ * @retval not NULL TriggerStep object on success, NULL otherwise.
+ */
+struct TriggerStep *
+sql_trigger_insert_step(struct Parse *parser, struct Token *table_name,
+			struct IdList *column_list, struct Select *select,
+			u8 orconf);
+
+/*
+ * Construct a trigger step that implements an UPDATE statement
+ * and return a pointer to that trigger step. The parser calls
+ * this routine when it sees an UPDATE statement inside the body
+ * of a CREATE TRIGGER.
+ * @param parset The parsing context.
+ * @param table_name Name of the table to be updated.
+ * @param new_list The SET clause: list of column and new values.
+ * @param where The WHERE clause.
+ * @param orconf The conflict algorithm
+ *               (ON_CONFLICT_ACTION_ABORT, _REPLACE, etc.).
+ * @retval not NULL TriggerStep object on success, NULL otherwise.
+ */
+struct TriggerStep *
+sql_trigger_update_step(struct Parse *parser, struct Token *table_name,
+		        struct ExprList *new_list, struct Expr *where,
+			u8 orconf);
+
+/*
+ * Construct a trigger step that implements a DELETE statement and
+ * return a pointer to that trigger step. The parser calls this
+ * routine when it sees a DELETE statement inside the body of a
+ * CREATE TRIGGER.
+ * @param parser The parsing context.
+ * @param table_name The table from which rows are deleted.
+ * @param where The WHERE clause.
+ * @retval not NULL TriggerStep object on success, NULL otherwise.
+ */
+struct TriggerStep *
+sql_trigger_delete_step(struct Parse *parser, struct Token * table_name,
+			struct Expr *where);
 
 /**
  * Triggers may access values stored in the old.* or new.*
