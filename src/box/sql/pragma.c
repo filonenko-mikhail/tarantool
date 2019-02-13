@@ -436,18 +436,17 @@ sqlPragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 	sqlVdbeRunOnlyOnce(v);
 	pParse->nMem = 2;
 
-	zLeft = sqlNameFromToken(db, pId);
+	zLeft = sql_name_from_token(pParse, pId);
 	if (!zLeft) {
 		printActivePragmas(user_session);
 		return;
 	}
 
-	if (minusFlag) {
+	if (minusFlag)
 		zRight = sqlMPrintf(db, "-%T", pValue);
-	} else {
-		zRight = sqlNameFromToken(db, pValue);
-	}
-	zTable = sqlNameFromToken(db, pValue2);
+	else
+		zRight = sql_name_from_token(pParse, pValue);
+	zTable = sql_name_from_token(pParse, pValue2);
 	db->busyHandler.nBusy = 0;
 
 	/* Locate the pragma in the lookup table */

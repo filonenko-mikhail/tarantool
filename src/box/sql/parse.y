@@ -604,7 +604,7 @@ seltablist(A) ::= stl_prefix(A) LP seltablist(F) RP
 %type fullname {SrcList*}
 %destructor fullname {sqlSrcListDelete(pParse->db, $$);}
 fullname(A) ::= nm(X).  
-   {A = sqlSrcListAppend(pParse->db,0,&X); /*A-overwrites-X*/}
+   {A = sql_SrcList_append(pParse,0,&X); /*A-overwrites-X*/}
 
 %type joinop {int}
 join_nm(A) ::= id(A).
@@ -786,9 +786,9 @@ insert_cmd(A) ::= REPLACE.            {A = ON_CONFLICT_ACTION_REPLACE;}
 idlist_opt(A) ::= .                       {A = 0;}
 idlist_opt(A) ::= LP idlist(X) RP.    {A = X;}
 idlist(A) ::= idlist(A) COMMA nm(Y).
-    {A = sqlIdListAppend(pParse->db,A,&Y);}
+    {A = sql_IdList_append(pParse,A,&Y);}
 idlist(A) ::= nm(Y).
-    {A = sqlIdListAppend(pParse->db,0,&Y); /*A-overwrites-Y*/}
+    {A = sql_IdList_append(pParse,0,&Y); /*A-overwrites-Y*/}
 
 /////////////////////////// Expression Processing /////////////////////////////
 //
@@ -1140,7 +1140,7 @@ expr(A) ::= expr(A) in_op(N) LP select(Y) RP(E).  [IN] {
   A.zEnd = &E.z[E.n];
 }
 expr(A) ::= expr(A) in_op(N) nm(Y) paren_exprlist(E). [IN] {
-  SrcList *pSrc = sqlSrcListAppend(pParse->db, 0,&Y);
+  SrcList *pSrc = sql_SrcList_append(pParse, 0,&Y);
   Select *pSelect = sqlSelectNew(pParse, 0,pSrc,0,0,0,0,0,0,0);
   if( E )  sqlSrcListFuncArgs(pParse, pSelect ? pSrc : 0, E);
   A.pExpr = sqlPExpr(pParse, TK_IN, A.pExpr, 0);
@@ -1210,7 +1210,7 @@ paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 //
 cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X)
         ON nm(Y) LP sortlist(Z) RP. {
-  sql_create_index(pParse, &X, sqlSrcListAppend(pParse->db,0,&Y), Z, &S,
+  sql_create_index(pParse, &X, sql_SrcList_append(pParse,0,&Y), Z, &S,
                    SORT_ORDER_ASC, NE, U);
 }
 

@@ -82,7 +82,7 @@ sql_trigger_begin(struct Parse *parse, struct Token *name, int tr_tm,
 		goto trigger_cleanup;
 	assert(table->nSrc == 1);
 
-	trigger_name = sqlNameFromToken(db, name);
+	trigger_name = sql_name_from_token(parse, name);
 	if (trigger_name == NULL)
 		goto trigger_cleanup;
 
@@ -588,7 +588,7 @@ targetSrcList(Parse * pParse,	/* The parsing context */
 	sql *db = pParse->db;
 	SrcList *pSrc;		/* SrcList to be returned */
 
-	pSrc = sqlSrcListAppend(db, 0, 0);
+	pSrc = sql_SrcList_append(pParse, 0, 0);
 	if (pSrc) {
 		assert(pSrc->nSrc > 0);
 		pSrc->a[pSrc->nSrc - 1].zName =

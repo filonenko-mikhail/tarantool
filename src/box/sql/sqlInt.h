@@ -3468,12 +3468,70 @@ void sqlDeleteTable(sql *, Table *);
 void sqlInsert(Parse *, SrcList *, Select *, IdList *,
 		   enum on_conflict_action);
 void *sqlArrayAllocate(sql *, void *, int, int *, int *);
-IdList *sqlIdListAppend(sql *, IdList *, Token *);
+
+/*
+ * Append a new element to the given IdList.  Create a new IdList if
+ * need be.
+ * A new IdList is returned, or NULL if malloc() fails.
+ * @param parser The parse context.
+ * @param list The pointer to existent Id list if exists.
+ * @param name_token The token containing name.
+ * @retval not NULL IdList pointer is returned on success.
+ * @retval NULL otherwise.
+ */
+struct IdList *
+sql_IdList_append(struct Parse *parser, struct IdList *pList,
+		  struct Token *pToken);
+
 int sqlIdListIndex(IdList *, const char *);
 SrcList *sqlSrcListEnlarge(sql *, SrcList *, int, int);
 SrcList *
 sql_alloc_src_list(sql *db);
-SrcList *sqlSrcListAppend(sql *, SrcList *, Token *);
+/*
+ * Append a new table name to the given list.  Create a new
+ * SrcList if need be. A new entry is created in the list even
+ * if name_token is NULL.
+ *
+ * A SrcList is returned, or NULL if there is an OOM error.
+ * The returned SrcList might be the same as the SrcList that was
+ * input or it might be a new one. If an OOM error does occurs,
+ * then the prior value of list that is input to this routine is
+ * automatically freed.
+ *
+ * If pDatabase is not null, it means that the table has an
+ * optional database name prefix. Like this: "database.table".
+ * The pDatabase points to the table name and the pTable points
+ * to the database name. The SrcList.a[].zName field is filled
+ * with the table name which might come from pTable (if pDatabase
+ * is NULL) or from pDatabase.
+ * SrcList.a[].zDatabase is filled with the database name from
+ * name_token, or with NULL if no database is specified.
+ *
+ * In other words, if call like this:
+ *
+ *         sql_SrcList_append(D,A,B,0);
+ *
+ * Then B is a table name and the database name is unspecified.
+ * If called like this:
+ *
+ *         sql_SrcList_append(D,A,B,C);
+ *
+ * Then C is the table name and B is the database name.  If C is
+ * defined then so is B.  In other words, we never have a case
+ * where:
+ *
+ *         sql_SrcList_append(D,A,0,C);
+ *
+ * Both pTable and pDatabase are assumed to be quoted. They are
+ * dequoted before being added to the SrcList.
+ * @param parser Parse context.
+ * @param list Append to this SrcList. NULL creates a new SrcList.
+ * @param name_token Token representing table name.
+ * @retval not NULL SrcList pointer on success, NULL otherwise.
+ */
+struct SrcList *
+sql_SrcList_append(struct Parse *parse, struct SrcList * pList,
+		   struct Token *pTable);
 SrcList *sqlSrcListAppendFromTerm(Parse *, SrcList *, Token *,
 				      Token *, Select *, Expr *, IdList *);
 void sqlSrcListIndexedBy(Parse *, SrcList *, Token *);
@@ -3656,7 +3714,24 @@ int sqlExprCodeExprList(Parse *, ExprList *, int, int, u8);
 void sqlExprIfTrue(Parse *, Expr *, int, int);
 void sqlExprIfFalse(Parse *, Expr *, int, int);
 
-char *sqlNameFromToken(sql *, Token *);
+/*
+ * Given a token, return a string that consists of the text of
+ * that token. Space to hold the returned string is obtained
+ * from sqlMalloc() and must be freed by the calling function.
+ *
+ * Any quotation marks (ex:  "name", 'name', [name], or `name`)
+ * that surround the body of the token are removed.
+ *
+ * Tokens are often just pointers into the original SQL text and
+ * so are not \000 terminated and are not persistent. The returned
+ * string is \000 terminated and is persistent.
+ * @param parser The parse context.
+ * @param name_token The source token with text.
+ * @retval not NULL string pointer on success, NULL otherwise.
+ */
+char *
+sql_name_from_token(struct Parse *parser, struct Token *name_token);
+
 int sqlExprCompare(Expr *, Expr *, int);
 int sqlExprListCompare(ExprList *, ExprList *, int);
 int sqlExprImpliesExpr(Expr *, Expr *, int);

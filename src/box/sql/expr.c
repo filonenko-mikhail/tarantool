@@ -1583,7 +1583,7 @@ sqlIdListDup(sql * db, IdList * p)
 		return 0;
 	}
 	/* Note that because the size of the allocation for p->a[] is not
-	 * necessarily a power of two, sqlIdListAppend() may not be called
+	 * necessarily a power of two, sql_IdList_append() may not be called
 	 * on the duplicate created by this function.
 	 */
 	for (i = 0; i < p->nId; i++) {

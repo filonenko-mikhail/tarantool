@@ -294,30 +294,15 @@ sqlDeleteTable(sql * db, Table * pTable)
 	table_delete(db, pTable);
 }
 
-/*
- * Given a token, return a string that consists of the text of that
- * token.  Space to hold the returned string
- * is obtained from sqlMalloc() and must be freed by the calling
- * function.
- *
- * Any quotation marks (ex:  "name", 'name', [name], or `name`) that
- * surround the body of the token are removed.
- *
- * Tokens are often just pointers into the original SQL text and so
- * are not \000 terminated and are not persistent.  The returned string
- * is \000 terminated and is persistent.
- */
 char *
-sqlNameFromToken(sql * db, Token * pName)
+sql_name_from_token(struct Parse *parser, struct Token *name_token)
 {
-	char *zName;
-	if (pName) {
-		zName = sqlDbStrNDup(db, (char *)pName->z, pName->n);
-		sqlNormalizeName(zName);
-	} else {
-		zName = 0;
-	}
-	return zName;
+	if (name_token == NULL || name_token->z == NULL)
+		return NULL;
+	char *name = sqlDbStrNDup(parser->db, (char *)name_token->z,
+				  name_token->n);
+	sqlNormalizeName(name);
+	return name;
 }
 
 /*
@@ -404,7 +389,7 @@ sqlStartTable(Parse *pParse, Token *pName, int noErr)
 		goto cleanup;
 	sqlVdbeCountChanges(v);
 
-	zName = sqlNameFromToken(db, pName);
+	zName = sql_name_from_token(pParse, pName);
 
 	pParse->sNameToken = *pName;
 	if (zName == 0)
@@ -779,7 +764,7 @@ sqlAddCollateType(Parse * pParse, Token * pToken)
 		return;
 	uint32_t i = p->def->field_count - 1;
 	sql *db = pParse->db;
-	char *zColl = sqlNameFromToken(db, pToken);
+	char *zColl = sql_name_from_token(pParse, pToken);
 	if (!zColl)
 		return;
 	uint32_t *coll_id = &p->def->fields[i].coll_id;
@@ -1838,7 +1823,7 @@ sql_create_foreign_key(struct Parse *parse_context, struct SrcList *child,
 		rlist_add_entry(&parse_context->new_fkey, fk, link);
 	}
 	assert(parent != NULL);
-	parent_name = sqlNameFromToken(db, parent);
+	parent_name = sql_name_from_token(parse_context, parent);
 	if (parent_name == NULL)
 		goto exit_create_fk;
 	/*
@@ -1875,10 +1860,12 @@ sql_create_foreign_key(struct Parse *parse_context, struct SrcList *child,
 					       new_tab->def->name);
 		} else {
 			struct Token *cnstr_nm = &parse_context->constraintName;
-			constraint_name = sqlNameFromToken(db, cnstr_nm);
+			constraint_name = sql_name_from_token(parse_context,
+							      cnstr_nm);
 		}
 	} else {
-		constraint_name = sqlNameFromToken(db, constraint);
+		constraint_name =
+			sql_name_from_token(parse_context, constraint);
 	}
 	if (constraint_name == NULL)
 		goto exit_create_fk;
@@ -2011,8 +1998,7 @@ sql_drop_foreign_key(struct Parse *parse_context, struct SrcList *table,
 		parse_context->nErr++;
 		return;
 	}
-	char *constraint_name = sqlNameFromToken(parse_context->db,
-						     constraint);
+	char *constraint_name = sql_name_from_token(parse_context, constraint);
 	if (constraint_name != NULL)
 		vdbe_emit_fkey_drop(parse_context, constraint_name,
 				    child->def->id);
@@ -2282,7 +2268,7 @@ sql_create_index(struct Parse *parse, struct Token *token,
 	 */
 	if (token != NULL) {
 		assert(token->z != NULL);
-		name = sqlNameFromToken(db, token);
+		name = sql_name_from_token(parse, token);
 		if (name == NULL)
 			goto exit_create_index;
 		if (sql_space_index_by_name(space, name) != NULL) {
@@ -2295,10 +2281,11 @@ sql_create_index(struct Parse *parse, struct Token *token,
 		}
 	} else {
 		char *constraint_name = NULL;
-		if (parse->constraintName.z != NULL)
+		if (parse->constraintName.z != NULL) {
 			constraint_name =
-				sqlNameFromToken(db,
-						     &parse->constraintName);
+				sql_name_from_token(parse,
+						    &parse->constraintName);
+		}
 
 	       /*
 		* This naming is temporary. Now it's not
@@ -2539,7 +2526,8 @@ sql_drop_index(struct Parse *parse_context, struct SrcList *index_name_list,
 	/* Never called with prior errors. */
 	assert(parse_context->nErr == 0);
 	assert(table_token != NULL);
-	const char *table_name = sqlNameFromToken(db, table_token);
+	const char *table_name =
+		sql_name_from_token(parse_context, table_token);
 	if (db->mallocFailed) {
 		goto exit_drop_index;
 	}
@@ -2626,30 +2614,25 @@ sqlArrayAllocate(sql * db,	/* Connection to notify of malloc failures */
 	return pArray;
 }
 
-/*
- * Append a new element to the given IdList.  Create a new IdList if
- * need be.
- *
- * A new IdList is returned, or NULL if malloc() fails.
- */
-IdList *
-sqlIdListAppend(sql * db, IdList * pList, Token * pToken)
+struct IdList *
+sql_IdList_append(struct Parse *parser, struct IdList *list,
+		  struct Token *name_token)
 {
+	struct sql *db = parser->db;
 	int i;
-	if (pList == 0) {
-		pList = sqlDbMallocZero(db, sizeof(IdList));
-		if (pList == 0)
-			return 0;
+	if (list == NULL) {
+		list = sqlDbMallocZero(db, sizeof(IdList));
+		if (list == NULL)
+			return NULL;
 	}
-	pList->a = sqlArrayAllocate(db,
-					pList->a,
-					sizeof(pList->a[0]), &pList->nId, &i);
+	list->a = sqlArrayAllocate(db, list->a, sizeof(list->a[0]),
+				   &list->nId, &i);
 	if (i < 0) {
-		sqlIdListDelete(db, pList);
+		sqlIdListDelete(db, list);
 		return 0;
 	}
-	pList->a[i].zName = sqlNameFromToken(db, pToken);
-	return pList;
+	list->a[i].zName = sql_name_from_token(parser, name_token);
+	return list;
 }
 
 /*
@@ -2772,62 +2755,26 @@ sql_alloc_src_list(sql *db)
 	return pList;
 }
 
-/*
- * Append a new table name to the given SrcList.  Create a new SrcList if
- * need be.  A new entry is created in the SrcList even if pTable is NULL.
- *
- * A SrcList is returned, or NULL if there is an OOM error.  The returned
- * SrcList might be the same as the SrcList that was input or it might be
- * a new one.  If an OOM error does occurs, then the prior value of pList
- * that is input to this routine is automatically freed.
- *
- * If pDatabase is not null, it means that the table has an optional
- * database name prefix.  Like this:  "database.table".  The pDatabase
- * points to the table name and the pTable points to the database name.
- * The SrcList.a[].zName field is filled with the table name which might
- * come from pTable (if pDatabase is NULL) or from pDatabase.
- * SrcList.a[].zDatabase is filled with the database name from pTable,
- * or with NULL if no database is specified.
- *
- * In other words, if call like this:
- *
- *         sqlSrcListAppend(D,A,B,0);
- *
- * Then B is a table name and the database name is unspecified.  If called
- * like this:
- *
- *         sqlSrcListAppend(D,A,B,C);
- *
- * Then C is the table name and B is the database name.  If C is defined
- * then so is B.  In other words, we never have a case where:
- *
- *         sqlSrcListAppend(D,A,0,C);
- *
- * Both pTable and pDatabase are assumed to be quoted.  They are dequoted
- * before being added to the SrcList.
- */
-SrcList *
-sqlSrcListAppend(sql * db,	/* Connection to notify of malloc failures */
-		     SrcList * pList,	/* Append to this SrcList. NULL creates a new SrcList */
-		     Token * pTable	/* Table to append */
-    )
+struct SrcList *
+sql_SrcList_append(struct Parse *parser, struct SrcList *list,
+		   struct Token *name_token)
 {
 	struct SrcList_item *pItem;
-	assert(db != 0);
-	if (pList == 0) {
-		pList = sql_alloc_src_list(db);
-		if (pList == 0)
-			return 0;
+	struct sql *db = parser->db;
+	if (list == NULL) {
+		list = sql_alloc_src_list(db);
+		if (list == NULL)
+			return NULL;
 	} else {
-		pList = sqlSrcListEnlarge(db, pList, 1, pList->nSrc);
+		list = sqlSrcListEnlarge(db, list, 1, list->nSrc);
 	}
 	if (db->mallocFailed) {
-		sqlSrcListDelete(db, pList);
+		sqlSrcListDelete(db, list);
 		return 0;
 	}
-	pItem = &pList->a[pList->nSrc - 1];
-	pItem->zName = sqlNameFromToken(db, pTable);
-	return pList;
+	pItem = &list->a[list->nSrc - 1];
+	pItem->zName = sql_name_from_token(parser, name_token);
+	return list;
 }
 
 /*
@@ -2909,15 +2856,14 @@ sqlSrcListAppendFromTerm(Parse * pParse,	/* Parsing context */
 		    );
 		goto append_from_error;
 	}
-	p = sqlSrcListAppend(db, p, pTable);
+	p = sql_SrcList_append(pParse, p, pTable);
 	if (p == 0 || NEVER(p->nSrc == 0)) {
 		goto append_from_error;
 	}
 	pItem = &p->a[p->nSrc - 1];
 	assert(pAlias != 0);
-	if (pAlias->n) {
-		pItem->zAlias = sqlNameFromToken(db, pAlias);
-	}
+	if (pAlias->n != 0)
+		pItem->zAlias = sql_name_from_token(pParse, pAlias);
 	pItem->pSelect = pSubquery;
 	pItem->pOn = pOn;
 	pItem->pUsing = pUsing;
@@ -2951,7 +2897,7 @@ sqlSrcListIndexedBy(Parse * pParse, SrcList * p, Token * pIndexedBy)
 			pItem->fg.notIndexed = 1;
 		} else {
 			pItem->u1.zIndexedBy =
-			    sqlNameFromToken(pParse->db, pIndexedBy);
+			    sql_name_from_token(pParse, pIndexedBy);
 			pItem->fg.isIndexedBy = (pItem->u1.zIndexedBy != 0);
 		}
 	}
@@ -3037,7 +2983,7 @@ sql_transaction_rollback(Parse *pParse)
 void
 sqlSavepoint(Parse * pParse, int op, Token * pName)
 {
-	char *zName = sqlNameFromToken(pParse->db, pName);
+	char *zName = sql_name_from_token(pParse, pName);
 	if (zName) {
 		Vdbe *v = sqlGetVdbe(pParse);
 		if (!v) {
@@ -3131,7 +3077,7 @@ sqlWithAdd(Parse * pParse,	/* Parsing context */
 	/* Check that the CTE name is unique within this WITH clause. If
 	 * not, store an error in the Parse structure.
 	 */
-	zName = sqlNameFromToken(pParse->db, pName);
+	zName = sql_name_from_token(pParse, pName);
 	if (zName && pWith) {
 		int i;
 		for (i = 0; i < pWith->nCte; i++) {

@@ -610,7 +610,7 @@ fkey_emit_check(struct Parse *parser, struct Table *tab, int reg_old,
 		 * table. We need the child table as a SrcList for
 		 * sqlWhereBegin().
 		 */
-		struct SrcList *src = sqlSrcListAppend(db, NULL, NULL);
+		struct SrcList *src = sql_SrcList_append(parser, NULL, NULL);
 		if (src == NULL)
 			continue;
 		struct SrcList_item *item = src->a;
@@ -871,7 +871,7 @@ fkey_action_trigger(struct Parse *pParse, struct Table *pTab, struct fkey *fkey,
 			r->on_conflict_action = ON_CONFLICT_ACTION_ABORT;
 		select = sqlSelectNew(pParse,
 					  sql_expr_list_append(db, NULL, r),
-					  sqlSrcListAppend(db, NULL, &err),
+					  sql_SrcList_append(pParse, NULL, &err),
 					  where, NULL, NULL, NULL, 0, NULL,
 					  NULL);
 		where = NULL;

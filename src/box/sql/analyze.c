@@ -1118,7 +1118,7 @@ sqlAnalyze(Parse * pParse, Token * pName)
 		sql_analyze_database(pParse);
 	} else {
 		/* Form 2:  Analyze table named */
-		char *z = sqlNameFromToken(db, pName);
+		char *z = sql_name_from_token(pParse, pName);
 		if (z != NULL) {
 			struct space *sp = space_by_name(z);
 			if (sp != NULL) {

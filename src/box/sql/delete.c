@@ -71,7 +71,7 @@ sql_materialize_view(struct Parse *parse, const char *name, struct Expr *where,
 {
 	struct sql *db = parse->db;
 	where = sqlExprDup(db, where, 0);
-	struct SrcList *from = sqlSrcListAppend(db, NULL, NULL);
+	struct SrcList *from = sql_SrcList_append(parse, NULL, NULL);
 	if (from != NULL) {
 		assert(from->nSrc == 1);
 		from->a[0].zName = sqlDbStrDup(db, name);

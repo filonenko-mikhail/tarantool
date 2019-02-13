@@ -43,7 +43,7 @@ sql_alter_table_rename(struct Parse *parse, struct SrcList *src_tab,
 {
 	assert(src_tab->nSrc == 1);
 	struct sql *db = parse->db;
-	char *new_name = sqlNameFromToken(db, new_name_tk);
+	char *new_name = sql_name_from_token(parse, new_name_tk);
 	if (new_name == NULL)
 		goto exit_rename_table;
 	/* Check that new name isn't occupied by another table. */
