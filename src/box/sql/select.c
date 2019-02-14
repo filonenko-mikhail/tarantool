@@ -4426,8 +4426,9 @@ sqlIndexedByLookup(Parse * pParse, struct SrcList_item *pFrom)
 			}
 		}
 		if (idx == NULL) {
-			sqlErrorMsg(pParse, "no such index: %s", zIndexedBy,
-					0);
+			diag_set(ClientError, ER_NO_SUCH_INDEX_NAME,
+				 zIndexedBy, pTab->def->name);
+			sql_parser_error(pParse);
 			return SQL_ERROR;
 		}
 		pFrom->pIBIndex = idx->def;
@@ -5065,9 +5066,10 @@ selectExpander(Walker * pWalker, Select * p)
 				}
 				if (!tableSeen) {
 					if (zTName) {
-						sqlErrorMsg(pParse,
-								"no such table: %s",
-								zTName);
+						diag_set(ClientError,
+							 ER_NO_SUCH_SPACE,
+							 zTName);
+						sql_parser_error(pParse);
 					} else {
 						sqlErrorMsg(pParse,
 								"no tables specified");

@@ -42,7 +42,8 @@ sql_lookup_table(struct Parse *parse, struct SrcList_item *tbl_name)
 	assert(tbl_name->pTab == NULL);
 	struct space *space = space_by_name(tbl_name->zName);
 	if (space == NULL) {
-		sqlErrorMsg(parse, "no such table: %s", tbl_name->zName);
+		diag_set(ClientError, ER_NO_SUCH_SPACE, tbl_name->zName);
+		sql_parser_error(parse);
 		return NULL;
 	}
 	assert(space != NULL);

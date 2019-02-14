@@ -3270,6 +3270,14 @@ int sqlKeywordCode(const unsigned char *, int);
 int sqlRunParser(Parse *, const char *, char **);
 
 /**
+ * Increment error counter if error suppression isn't set.
+ *
+ * @param parse_context Current parsing context.
+ */
+void
+sql_parser_error(struct Parse *parse_context);
+
+/**
  * This routine is called after a single SQL statement has been
  * parsed and a VDBE program to execute that statement has been
  * prepared.  This routine puts the finishing touches on the

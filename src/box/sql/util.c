@@ -246,6 +246,16 @@ sqlErrorMsg(Parse * pParse, const char *zFormat, ...)
 	}
 }
 
+void
+sql_parser_error(struct Parse *parse_context)
+{
+	if (parse_context->db->suppressErr)
+		return;
+	parse_context->nErr++;
+	parse_context->rc = SQL_TARANTOOL_ERROR;
+}
+
+
 /*
  * Convert an SQL-style quoted string into a normal string by removing
  * the quote characters.  The conversion is done in-place.  If the
