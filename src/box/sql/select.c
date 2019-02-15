@@ -397,18 +397,15 @@ sqlJoinType(Parse * pParse, Token * pA, Token * pB, Token * pC)
 	}
 	if ((jointype & (JT_INNER | JT_OUTER)) == (JT_INNER | JT_OUTER) ||
 	    (jointype & JT_ERROR) != 0) {
-		const char *zSp = " ";
-		assert(pB != 0);
-		if (pC == 0) {
-			zSp++;
-		}
-		sqlErrorMsg(pParse, "unknown or unsupported join type: "
-				"%T %T%s%T", pA, pB, zSp, pC);
+		diag_set(ClientError, ER_UNSUPPORTED, "Tarantool", "this type "\
+			 "of join");
+		sql_parser_error(pParse);
 		jointype = JT_INNER;
 	} else if ((jointype & JT_OUTER) != 0
 		   && (jointype & (JT_LEFT | JT_RIGHT)) != JT_LEFT) {
-		sqlErrorMsg(pParse,
-				"RIGHT and FULL OUTER JOINs are not currently supported");
+		diag_set(ClientError, ER_UNSUPPORTED, "Tarantool", "RIGHT "\
+			 "and FULL OUTER JOINs");
+		sql_parser_error(pParse);
 		jointype = JT_INNER;
 	}
 	return jointype;
@@ -2451,8 +2448,9 @@ generateWithRecursiveQuery(Parse * pParse,	/* Parsing context */
 	 * the value for the recursive-table. Store the results in the Queue.
 	 */
 	if (p->selFlags & SF_Aggregate) {
-		sqlErrorMsg(pParse,
-				"recursive aggregate queries not supported");
+		diag_set(ClientError, ER_UNSUPPORTED,"Tarantool", "recursive "\
+			 "aggregate queries");
+		sql_parser_error(pParse);
 	} else {
 		p->pPrior = 0;
 		sqlSelect(pParse, p, &destQueue);

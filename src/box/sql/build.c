@@ -683,8 +683,10 @@ sqlAddPrimaryKey(Parse * pParse,	/* Parsing context */
 			    sqlExprSkipCollate(pList->a[i].pExpr);
 			assert(pCExpr != 0);
 			if (pCExpr->op != TK_ID) {
-				sqlErrorMsg(pParse, "expressions prohibited"
-							" in PRIMARY KEY");
+				diag_set(ClientError, ER_UNSUPPORTED,
+					 "Tarantool", "expressions in PRIMARY "\
+					 "KEY");
+				sql_parser_error(pParse);
 				goto primary_key_exit;
 			}
 			const char *name = pCExpr->u.zToken;

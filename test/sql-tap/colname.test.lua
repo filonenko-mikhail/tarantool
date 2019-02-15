@@ -637,7 +637,7 @@ test:do_test(
 test:do_catchsql_test(
     "colname-11.1",
     [[ create table t1(a INT, b INT, c INT, primary key('A'))]],
-    {1, "expressions prohibited in PRIMARY KEY"})
+    {1, "Tarantool does not support expressions in PRIMARY KEY"})
 
 test:do_catchsql_test(
     "colname-11.2",

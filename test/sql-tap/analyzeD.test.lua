@@ -177,7 +177,7 @@ test:do_catchsql_test(
 		ANALYZE v;
 	]], {
 		-- <analyzeD-1.12>
-		1, "VIEW isn't allowed to be analyzed"
+		1, "Tarantool does not support analysis of view"
 		-- <analyzeD-1.12>
 	})
 
