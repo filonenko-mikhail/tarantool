@@ -176,13 +176,16 @@ lbox_sql_create_function(struct lua_State *L)
 	}
 	size_t name_len;
 	const char *name = lua_tolstring(L, 1, &name_len);
+	int normalized_name_len = sql_normalize_name(NULL, 0, name, name_len);
+	if (normalized_name_len < 0)
+		return luaT_error(L);
 	char *normalized_name = (char *) region_alloc(&fiber()->gc,
-						      name_len + 1);
+						      normalized_name_len + 1);
 	if (normalized_name == NULL)
 		return luaL_error(L, "out of memory");
-	memcpy(normalized_name, name, name_len);
-	normalized_name[name_len] = '\0';
-	sqlNormalizeName(normalized_name);
+	if (sql_normalize_name(normalized_name, normalized_name_len + 1, name,
+			       name_len) < 0)
+		return luaT_error(L);
 	struct lua_sql_func_info *func_info =
 		(struct lua_sql_func_info *) malloc(sizeof(*func_info));
 	if (func_info == NULL)

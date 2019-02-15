@@ -41,6 +41,7 @@
 #if HAVE_ISNAN || SQL_HAVE_ISNAN
 #include <math.h>
 #endif
+#include <unicode/ucasemap.h>
 
 /*
  * Routine needed to support the testcase() macro.
@@ -289,23 +290,34 @@ sqlDequote(char *z)
 	z[j] = 0;
 }
 
-
-void
-sqlNormalizeName(char *z)
+int
+sql_normalize_name(char *dst, int dst_size, const char *src, int src_len)
 {
-	char quote;
-	int i=0;
-	if (z == 0)
-		return;
-	quote = z[0];
-	if (sqlIsquote(quote)){
-		sqlDequote(z);
-		return;
+	assert(src != NULL);
+	if (sqlIsquote(src[0])){
+		if (dst_size == 0)
+			return src_len;
+		memcpy(dst, src, src_len);
+		dst[src_len] = '\0';
+		sqlDequote(dst);
+		return src_len;
 	}
-	while(z[i]!=0){
-		z[i] = (char)sqlToupper(z[i]);
-		i++;
-	}
+	UErrorCode status = U_ZERO_ERROR;
+	UCaseMap *case_map = ucasemap_open(NULL, 0, &status);
+	if (case_map == NULL)
+		goto error;
+	int len = ucasemap_utf8ToUpper(case_map, dst, dst_size, src, src_len,
+				       &status);
+	ucasemap_close(case_map);
+	if (!U_SUCCESS(status) &&
+	    !(dst_size == 0 && status == U_BUFFER_OVERFLOW_ERROR))
+		goto error;
+	return len;
+error:
+	diag_set(CollationError,
+		 "string conversion to the uppercase failed: %s",
+		 u_errorName(status));
+	return -1;
 }
 
 /*

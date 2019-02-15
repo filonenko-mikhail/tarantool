@@ -3264,7 +3264,31 @@ void sqlTreeViewWith(TreeView *, const With *);
 void sqlSetString(char **, sql *, const char *);
 void sqlErrorMsg(Parse *, const char *, ...);
 void sqlDequote(char *);
-void sqlNormalizeName(char *z);
+
+/**
+ * Perform SQL name normalization: cast name to the upper-case
+ * (via Unicode Character Folding). Casing is locale-dependent
+ * and context-sensitive. The result may be longer or shorter
+ * than the original. The source string and the destination buffer
+ * must not overlap.
+ * For example, ß is converted to SS.
+ * The result is similar to SQL UPPER function.
+ * @param dst A buffer for the result string. The result will be
+ *            NUL-terminated if the buffer is large enough. The
+ *            contents is undefined in case of failure.
+ * @param dst_size The size of the buffer (number of bytes).
+ *                 If it is 0, then dest may be NULL and the
+ *                 function will only return the length of the
+ *                 result without writing any of the result
+ *                 string.
+ * @param src The original string.
+ * @param src_len The length of the original string.
+ * @retval The length of the result string, on success.
+ * @retval < 0 otherwise.
+ */
+int
+sql_normalize_name(char *dst, int dst_size, const char *src, int src_len);
+
 void sqlTokenInit(Token *, char *);
 int sqlKeywordCode(const unsigned char *, int);
 int sqlRunParser(Parse *, const char *, char **);

@@ -279,16 +279,26 @@ sql_trigger_step_allocate(struct Parse *parser, u8 op,
 			  struct Token *target_name)
 {
 	struct sql *db = parser->db;
-	struct TriggerStep *trigger_step =
-	    sqlDbMallocZero(db, sizeof(TriggerStep) + target_name->n + 1);
+	struct TriggerStep *trigger_step = NULL;
+	int name_len =
+		sql_normalize_name(NULL, 0, target_name->z, target_name->n);
+	if (name_len < 0)
+		goto tarantool_error;
+	trigger_step = sqlDbMallocZero(db, sizeof(TriggerStep) + name_len + 1);
 	if (trigger_step != NULL) {
 		char *z = (char *)&trigger_step[1];
-		memcpy(z, target_name->z, target_name->n);
-		sqlNormalizeName(z);
+		if (sql_normalize_name(z, name_len + 1, target_name->z,
+				       target_name->n) < 0)
+			goto tarantool_error;
 		trigger_step->zTarget = z;
 		trigger_step->op = op;
 	}
 	return trigger_step;
+tarantool_error:
+	sqlDbFree(db, trigger_step);
+	parser->rc = SQL_TARANTOOL_ERROR;
+	parser->nErr++;
+	return NULL;
 }
 
 struct TriggerStep *

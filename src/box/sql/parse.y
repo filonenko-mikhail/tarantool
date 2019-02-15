@@ -813,7 +813,16 @@ idlist(A) ::= nm(Y).
   ** that created the expression.
   */
   static void spanExpr(ExprSpan *pOut, Parse *pParse, int op, Token t){
-    Expr *p = sqlDbMallocRawNN(pParse->db, sizeof(Expr)+t.n+1);
+    int name_len = 0;
+    struct Expr *p = NULL;
+    if (op != TK_VARIABLE) {
+      name_len = sql_normalize_name(NULL, 0, t.z, t.n);
+      if (name_len < 0)
+        goto tarantool_error;
+    } else {
+      name_len = t.n;
+    }
+    p = sqlDbMallocRawNN(pParse->db, sizeof(Expr) + name_len + 1);
     if( p ){
       memset(p, 0, sizeof(Expr));
       switch (op) {
@@ -846,10 +855,12 @@ idlist(A) ::= nm(Y).
       p->flags = EP_Leaf;
       p->iAgg = -1;
       p->u.zToken = (char*)&p[1];
-      memcpy(p->u.zToken, t.z, t.n);
-      p->u.zToken[t.n] = 0;
-      if (op != TK_VARIABLE){
-        sqlNormalizeName(p->u.zToken);
+      if (op != TK_VARIABLE) {
+        if (sql_normalize_name(p->u.zToken, name_len + 1, t.z, t.n) < 0)
+          goto tarantool_error;
+      } else {
+        memcpy(p->u.zToken, t.z, t.n);
+        p->u.zToken[t.n] = 0;
       }
 #if SQL_MAX_EXPR_DEPTH>0
       p->nHeight = 1;
@@ -858,6 +869,11 @@ idlist(A) ::= nm(Y).
     pOut->pExpr = p;
     pOut->zStart = t.z;
     pOut->zEnd = &t.z[t.n];
+    return;
+tarantool_error:
+    sqlDbFree(pParse->db, p);
+    pParse->rc = SQL_TARANTOOL_ERROR;
+    pParse->nErr++;
   }
 }
 

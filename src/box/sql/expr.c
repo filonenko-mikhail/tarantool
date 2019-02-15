@@ -799,15 +799,24 @@ sql_expr_create(struct Parse *parser, int op, const Token *token, bool dequote)
 {
 	int extra_sz = 0;
 	int val = 0;
+	struct Expr *expr = NULL;
 	if (token != NULL) {
 		if (op != TK_INTEGER || token->z == NULL ||
 		    sqlGetInt32(token->z, &val) == 0) {
-			extra_sz = token->n + 1;
+			if (op == TK_ID || op == TK_COLLATE ||
+			    op == TK_FUNCTION) {
+				extra_sz = sql_normalize_name(NULL, 0, token->z,
+							      token->n);
+				if (extra_sz < 0)
+					goto tarantool_error;
+			} else {
+				extra_sz = token->n;
+			}
+			extra_sz += 1;
 			assert(val >= 0);
 		}
 	}
-	struct Expr *expr =
-		sqlDbMallocRawNN(parser->db, sizeof(*expr) + extra_sz);
+	expr = sqlDbMallocRawNN(parser->db, sizeof(*expr) + extra_sz);
 	if (expr == NULL)
 		return NULL;
 
@@ -826,19 +835,27 @@ sql_expr_create(struct Parse *parser, int op, const Token *token, bool dequote)
 	} else {
 		expr->u.zToken = (char *)&expr[1];
 		assert(token->z != NULL || token->n == 0);
-		memcpy(expr->u.zToken, token->z, token->n);
-		expr->u.zToken[token->n] = '\0';
-		if (dequote) {
-			if (expr->u.zToken[0] == '"')
-				expr->flags |= EP_DblQuoted;
-			if (expr->op == TK_ID || expr->op == TK_COLLATE ||
-			    expr->op == TK_FUNCTION)
-				sqlNormalizeName(expr->u.zToken);
-			else
+		if (dequote && expr->u.zToken[0] == '"')
+			expr->flags |= EP_DblQuoted;
+		if (dequote &&
+		    (expr->op == TK_ID || expr->op == TK_COLLATE ||
+		     expr->op == TK_FUNCTION)) {
+			if (sql_normalize_name(expr->u.zToken, extra_sz,
+					       token->z, token->n) < 0)
+				goto tarantool_error;
+		} else {
+			memcpy(expr->u.zToken, token->z, token->n);
+			expr->u.zToken[token->n] = '\0';
+			if (dequote)
 				sqlDequote(expr->u.zToken);
 		}
 	}
 	return expr;
+tarantool_error:
+	sqlDbFree(parser->db, expr);
+	parser->rc = SQL_TARANTOOL_ERROR;
+	parser->nErr++;
+	return NULL;
 }
 
 struct Expr *
@@ -1714,18 +1731,31 @@ sqlExprListSetName(Parse * pParse,	/* Parsing context */
     )
 {
 	assert(pList != 0 || pParse->db->mallocFailed != 0);
-	if (pList) {
-		struct ExprList_item *pItem;
-		assert(pList->nExpr > 0);
-		pItem = &pList->a[pList->nExpr - 1];
-		assert(pItem->zName == 0);
-		pItem->zName = sqlDbStrNDup(pParse->db, pName->z, pName->n);
-		if (dequote)
-			sqlNormalizeName(pItem->zName);
-		/* n = 0 in case of select * */
-		if (pName->n != 0)
-			sqlCheckIdentifierName(pParse, pItem->zName);
+	if (pList == NULL || pName->n == 0)
+		return;
+	assert(pList->nExpr > 0);
+	struct ExprList_item *item = &pList->a[pList->nExpr - 1];
+	assert(item->zName == NULL);
+	if (dequote) {
+		int name_len = sql_normalize_name(NULL, 0, pName->z, pName->n);
+		if (name_len < 0)
+			goto tarantool_error;
+		item->zName = sqlDbMallocRawNN(pParse->db, name_len + 1);
+		if (item->zName == NULL)
+			return;
+		if (sql_normalize_name(item->zName, name_len + 1, pName->z,
+				       pName->n) < 0)
+			goto tarantool_error;
+	} else {
+		item->zName = sqlDbStrNDup(pParse->db, pName->z, pName->n);
+		if (item->zName == NULL)
+			return;
 	}
+	sqlCheckIdentifierName(pParse, item->zName);
+	return;
+tarantool_error:
+	pParse->rc = SQL_TARANTOOL_ERROR;
+	pParse->nErr++;
 }
 
 /*
