@@ -3292,13 +3292,69 @@ void sqlClearTempRegCache(Parse *);
 #ifdef SQL_DEBUG
 int sqlNoTempsInRange(Parse *, int, int);
 #endif
-Expr *sqlExprAlloc(sql *, int, const Token *, int);
-Expr *sqlExpr(sql *, int, const char *);
-Expr *sqlExprInteger(sql *, int);
+
+/*
+ * This routine is the core allocator for Expr nodes.
+ * Construct a new expression node and return a pointer to it.
+ * Memory for this node and for the token argument is a single
+ * allocation obtained from sqlDbMalloc(). The calling function
+ * is responsible for making sure the node eventually gets freed.
+ *
+ * If dequote is true, then the token (if it exists) is dequoted.
+ * If dequote is false, no dequoting is performed.  The deQuote
+ * parameter is ignored if token is NULL or if the token does
+ * not appear to be quoted. If the quotes were of the form "..."
+ * (double-quotes) then the EP_DblQuoted flag is set on the
+ * expression node.
+ *
+ * Special case: If op==TK_INTEGER and token points to a string
+ * that can be translated into a 32-bit integer, then the token is
+ * not stored in u.zToken. Instead, the integer values is written
+ * into u.iValue and the EP_IntValue flag is set. No extra storage
+ * is allocated to hold the integer text and the dequote flag is
+ * ignored.
+ * @param parser The parsing context.
+ * @param op Expression opcode (TK_*).
+ * @param token Source token. Might be NULL.
+ * @param dequote True to dequote string.
+ * @retval not NULL new expression object on success.
+ * @retval NULL otherwise.
+ */
+struct Expr *
+sql_expr_create(struct Parse *parser, int op, const Token *token, bool dequote);
+
+/*
+ * Allocate a new expression node from a zero-terminated token
+ * that has already been dequoted.
+ * @param parser The parsing context.
+ * @param op Expression opcode.
+ * @param name The object name string.
+ * @retval not NULL expression pointer on success, NULL otherwise.
+ */
+struct Expr *
+sql_op_expr_create(struct Parse *parser, int op, const char *name);
+
 void sqlExprAttachSubtrees(sql *, Expr *, Expr *, Expr *);
 Expr *sqlPExpr(Parse *, int, Expr *, Expr *);
 void sqlPExprAddSelect(Parse *, Expr *, Select *);
-Expr *sqlExprAnd(sql *, Expr *, Expr *);
+
+/*
+ * Join two expressions using an AND operator.  If either
+ * expression is NULL, then just return the other expression.
+ *
+ * If one side or the other of the AND is known to be false, then
+ * instead of returning an AND expression, just return a constant
+ * expression with a value of false.
+ * @param parser The parsing context.
+ * @param left_expr The left-branch expresion to join.
+ * @param right_expr The right-branch expression to join.
+ * @retval not NULL new expression root node pointer on success.
+ * @retval NULL otherwise.
+ */
+struct Expr *
+sql_and_expr_create(struct Parse *parser, struct Expr *left_expr,
+		    struct Expr *right_expr);
+
 Expr *sqlExprFunction(Parse *, ExprList *, Token *);
 void sqlExprAssignVarNumber(Parse *, Expr *, u32);
 ExprList *sqlExprListAppendVector(Parse *, ExprList *, IdList *, Expr *);
@@ -4725,7 +4781,20 @@ void sqlAppendChar(StrAccum *, int, char);
 char *sqlStrAccumFinish(StrAccum *);
 void sqlStrAccumReset(StrAccum *);
 void sqlSelectDestInit(SelectDest *, int, int, int);
-Expr *sqlCreateColumnExpr(sql *, SrcList *, int, int);
+
+/*
+ * Allocate and return a pointer to an expression to load the
+ * column from datasource src_idx in SrcList src_list.
+ * @param parser The parsing context.
+ * @param src_list The source list described with FROM clause.
+ * @param src_idx The resource index to use in src_list.
+ * @param column The column index.
+ * @retval not NULL expression pointer on success.
+ * @retval NULL otherwise.
+ */
+struct Expr *
+sql_column_expr_create(struct Parse *parser, struct SrcList *src_list,
+		       int src_idx, int column);
 
 int sqlExprCheckIN(Parse *, Expr *);
 

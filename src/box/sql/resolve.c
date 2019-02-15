@@ -479,26 +479,20 @@ lookupName(Parse * pParse,	/* The parsing context */
 	}
 }
 
-/*
- * Allocate and return a pointer to an expression to load the column iCol
- * from datasource iSrc in SrcList pSrc.
- */
-Expr *
-sqlCreateColumnExpr(sql * db, SrcList * pSrc, int iSrc, int iCol)
+struct Expr *
+sql_column_expr_create(struct Parse *parser, struct SrcList *src_list,
+		       int src_idx, int column)
 {
-	Expr *p = sqlExprAlloc(db, TK_COLUMN, 0, 0);
-	if (p) {
-		struct SrcList_item *pItem = &pSrc->a[iSrc];
-		p->space_def = pItem->pTab->def;
-		p->iTable = pItem->iCursor;
-		p->iColumn = (ynVar) iCol;
-		testcase(iCol == BMS);
-		testcase(iCol == BMS - 1);
-		pItem->colUsed |=
-			((Bitmask) 1) << (iCol >= BMS ? BMS - 1 : iCol);
-		ExprSetProperty(p, EP_Resolved);
-	}
-	return p;
+	struct Expr *expr = sql_expr_create(parser, TK_COLUMN, NULL, true);
+	if (expr == NULL)
+		return NULL;
+	struct SrcList_item *pItem = &src_list->a[src_idx];
+	expr->space_def = pItem->pTab->def;
+	expr->iTable = pItem->iCursor;
+	expr->iColumn = column;
+	pItem->colUsed |= ((Bitmask) 1) << (column >= BMS ? BMS - 1 : column);
+	ExprSetProperty(expr, EP_Resolved);
+	return expr;
 }
 
 /*
@@ -999,7 +993,9 @@ resolveCompoundOrderBy(Parse * pParse,	/* Parsing context.  Leave error messages
 				/* Convert the ORDER BY term into an integer column number iCol,
 				 * taking care to preserve the COLLATE clause if it exists
 				 */
-				Expr *pNew = sqlExpr(db, TK_INTEGER, 0);
+				Expr *pNew =
+					sql_op_expr_create(pParse, TK_INTEGER,
+							   NULL);
 				if (pNew == 0)
 					return 1;
 				pNew->flags |= EP_IntValue;
@@ -1347,9 +1343,8 @@ resolveSelectStep(Walker * pWalker, Select * p)
 			 * restrict it directly).
 			 */
 			sql_expr_delete(db, p->pLimit, false);
-			p->pLimit =
-			    sqlExprAlloc(db, TK_INTEGER,
-					     &sqlIntTokens[1], 0);
+			p->pLimit = sql_expr_create(pParse, TK_INTEGER,
+						    &sqlIntTokens[1], false);
 		} else {
 			if (sqlResolveExprNames(&sNC, p->pHaving))
 				return WRC_Abort;

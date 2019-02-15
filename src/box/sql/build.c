@@ -691,8 +691,8 @@ sqlAddPrimaryKey(Parse * pParse,	/* Parsing context */
 		struct Token token;
 		sqlTokenInit(&token, pTab->def->fields[iCol].name);
 		list = sql_expr_list_append(db, NULL,
-					    sqlExprAlloc(db, TK_ID,
-							     &token, 0));
+					    sql_expr_create(pParse, TK_ID,
+							    &token, false));
 		if (list == NULL)
 			goto primary_key_exit;
 		sql_create_index(pParse, 0, 0, list, 0, SORT_ORDER_ASC,
@@ -1455,10 +1455,11 @@ sql_id_eq_str_expr(struct Parse *parse, const char *col_name,
 {
 	struct sql *db = parse->db;
 
-	struct Expr *col_name_expr = sqlExpr(db, TK_ID, col_name);
+	struct Expr *col_name_expr = sql_op_expr_create(parse, TK_ID, col_name);
 	if (col_name_expr == NULL)
 		return NULL;
-	struct Expr *col_value_expr = sqlExpr(db, TK_STRING, col_value);
+	struct Expr *col_value_expr =
+		sql_op_expr_create(parse, TK_STRING, col_value);
 	if (col_value_expr == NULL) {
 		sql_expr_delete(db, col_name_expr, false);
 		return NULL;
@@ -1480,12 +1481,12 @@ vdbe_emit_stat_space_clear(struct Parse *parse, const char *stat_table_name,
 	if (idx_name != NULL) {
 		struct Expr *expr = sql_id_eq_str_expr(parse, "idx", idx_name);
 		if (expr != NULL)
-			where = sqlExprAnd(db, expr, where);
+			where = sql_and_expr_create(parse, expr, where);
 	}
 	if (table_name != NULL) {
 		struct Expr *expr = sql_id_eq_str_expr(parse, "tbl", table_name);
 		if (expr != NULL)
-			where = sqlExprAnd(db, expr, where);
+			where = sql_and_expr_create(parse, expr, where);
 	}
 	/**
 	 * On memory allocation error sql_table delete_from
@@ -2339,8 +2340,9 @@ sql_create_index(struct Parse *parse, struct Token *token,
 		uint32_t last_field = def->field_count - 1;
 		sqlTokenInit(&prev_col, def->fields[last_field].name);
 		col_list = sql_expr_list_append(parse->db, NULL,
-						sqlExprAlloc(db, TK_ID,
-								 &prev_col, 0));
+						sql_expr_create(parse, TK_ID,
+								&prev_col,
+								false));
 		if (col_list == NULL)
 			goto exit_create_index;
 		assert(col_list->nExpr == 1);
