@@ -37,6 +37,7 @@
 #include "schema_def.h"
 #include "coll_id_cache.h"
 #include "small/region.h"
+#include "coll.h"
 
 const char *sort_order_strs[] = { "asc", "desc", "undef" };
 
@@ -596,12 +597,11 @@ key_def_find_by_fieldno(const struct key_def *key_def, uint32_t fieldno)
 	return key_def_find(key_def, &part);
 }
 
-const struct key_part *
-key_def_find(const struct key_def *key_def, const struct key_part *to_find)
+static const struct key_part *
+key_def_find_next(const struct key_part *part, const struct key_part *end,
+		  const struct key_part *to_find)
 {
-	const struct key_part *part = key_def->parts;
-	const struct key_part *end = part + key_def->part_count;
-	for (; part != end; part++) {
+	for(; part != end; part++) {
 		if (part->fieldno == to_find->fieldno &&
 		    json_path_cmp(part->path, part->path_len,
 				  to_find->path, to_find->path_len,
@@ -609,6 +609,43 @@ key_def_find(const struct key_def *key_def, const struct key_part *to_find)
 			return part;
 	}
 	return NULL;
+}
+
+static bool
+key_def_need_merge(const struct key_def *sec_key_def,
+		   const struct key_part *pk_key_part)
+{
+	const struct key_part* end = sec_key_def->parts +
+				     sec_key_def->part_count;
+	const struct key_part* part = key_def_find_next(sec_key_def->parts,
+							end,
+							pk_key_part);
+	if (part == NULL)
+		return true;
+
+	/* The duplicate key_part is found,
+	 * compare collation */
+	if (part->coll == pk_key_part->coll)
+		return false;
+
+	if (part->coll == NULL ||
+	    part->coll->strength == COLL_ICU_STRENGTH_DEFAULT) {
+		return false;
+		/* If collation of the sec. key part
+		 * is binary then the sec. key
+		 * doesn't require a composite key.
+		 * */
+	} else
+		return true;
+}
+
+const struct key_part *
+key_def_find(const struct key_def *key_def, const struct key_part *to_find)
+{
+	/* find the first match */
+	return key_def_find_next(key_def->parts,
+				 key_def->parts + key_def->part_count,
+				 to_find);
 }
 
 bool
@@ -639,7 +676,7 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 	part = second->parts;
 	end = part + second->part_count;
 	for (; part != end; part++) {
-		if (key_def_find(first, part) != NULL)
+		if (!key_def_need_merge(first, part))
 			--new_part_count;
 		else
 			sz += part->path_len;
@@ -677,7 +714,7 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 	part = second->parts;
 	end = part + second->part_count;
 	for (; part != end; part++) {
-		if (key_def_find(first, part) != NULL)
+		if (!key_def_need_merge(first, part))
 			continue;
 		key_def_set_part(new_def, pos++, part->fieldno, part->type,
 				 part->nullable_action, part->coll,

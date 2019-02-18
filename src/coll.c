@@ -320,6 +320,7 @@ coll_new(const struct coll_def *def)
 	}
 	memcpy((char *) coll->fingerprint, fingerprint, fingerprint_len + 1);
 	coll->refs = 1;
+	coll->strength = def->icu.strength;
 	coll->type = def->type;
 	switch (coll->type) {
 	case COLL_TYPE_ICU:

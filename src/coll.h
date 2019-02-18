@@ -56,6 +56,8 @@ struct UCollator;
 struct coll {
 	/** Collation type. */
 	enum coll_type type;
+	/** Strength ICU settings */
+	enum coll_icu_strength strength;
 	/** ICU collation specific data. */
 	struct UCollator *collator;
 	/** String comparator. */
