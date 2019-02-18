@@ -43,7 +43,7 @@ jobs:
       - name: LTO build + test (OS X)
         os: osx
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
-        #if: branch = "2.1"
+        if: branch = "2.1"
       - name: Create and deploy tarball
         env: TARGET=source
         if: branch = "2.1"
