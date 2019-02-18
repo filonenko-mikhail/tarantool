@@ -8,7 +8,7 @@ language: cpp
 os: linux
 compiler: gcc
 
-osx_image: xcode9
+osx_image: xcode10.1
 
 cache:
     directories:
@@ -27,6 +27,10 @@ jobs:
       - name: RelWithDebInfoWError build + test (OS X)
         env: TARGET=test
         os: osx
+      - name: RelWithDebInfoWError build + test (OS X 9)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode9.4
       - name: Debug build + test + coverage (Linux, gcc)
         env: TARGET=coverage
       - name: LTO build + test (Linux, gcc)
@@ -39,7 +43,7 @@ jobs:
       - name: LTO build + test (OS X)
         os: osx
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
-        if: branch = "2.1"
+        #if: branch = "2.1"
       - name: Create and deploy tarball
         env: TARGET=source
         if: branch = "2.1"

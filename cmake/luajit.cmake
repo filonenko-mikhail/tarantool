@@ -194,9 +194,9 @@ macro(luajit_build)
         endif()
         # Pass deployment target
         if ("${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "")
-            # Default to 10.6 since @rpath support is NOT available in
+            # Default to 10.14 since @rpath support is NOT available in
             # earlier versions, needed by AddressSanitizer.
-            set (luajit_osx_deployment_target 10.6)
+            set (luajit_osx_deployment_target 10.14)
         else()
             set (luajit_osx_deployment_target ${CMAKE_OSX_DEPLOYMENT_TARGET})
         endif()
