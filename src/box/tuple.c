@@ -758,3 +758,18 @@ mp_str(const char *data)
 		return "<failed to format message pack>";
 	return buf;
 }
+
+char *
+key_dup(const char *key)
+{
+	assert(mp_typeof(*key) == MP_ARRAY);
+	const char *end = key;
+	mp_next(&end);
+	char *res = malloc(end - key);
+	if (res == NULL) {
+		diag_set(OutOfMemory, end - key, "malloc", "key");
+		return NULL;
+	}
+	memcpy(res, key, end - key);
+	return res;
+}

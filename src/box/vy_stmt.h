@@ -424,14 +424,6 @@ vy_stmt_new_select(struct tuple_format *format, const char *key,
 		   uint32_t part_count);
 
 /**
- * Copy the key in a new memory area.
- * @retval not NULL Success.
- * @retval     NULL Memory error.
- */
-char *
-vy_key_dup(const char *key);
-
-/**
  * Create a new surrogate DELETE from @a key using format.
  *
  * Example:

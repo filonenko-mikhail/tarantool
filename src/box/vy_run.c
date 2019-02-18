@@ -206,7 +206,7 @@ vy_page_info_create(struct vy_page_info *page_info, uint64_t offset,
 	memset(page_info, 0, sizeof(*page_info));
 	page_info->offset = offset;
 	page_info->unpacked_size = 0;
-	page_info->min_key = vy_key_dup(min_key);
+	page_info->min_key = key_dup(min_key);
 	return page_info->min_key == NULL ? -1 : 0;
 }
 
@@ -510,7 +510,7 @@ vy_page_info_decode(struct vy_page_info *page, const struct xrow_header *xrow,
 		case VY_PAGE_INFO_MIN_KEY:
 			key_beg = pos;
 			mp_next(&pos);
-			page->min_key = vy_key_dup(key_beg);
+			page->min_key = key_dup(key_beg);
 			if (page->min_key == NULL)
 				return -1;
 			break;
@@ -595,14 +595,14 @@ vy_run_info_decode(struct vy_run_info *run_info,
 		case VY_RUN_INFO_MIN_KEY:
 			tmp = pos;
 			mp_next(&pos);
-			run_info->min_key = vy_key_dup(tmp);
+			run_info->min_key = key_dup(tmp);
 			if (run_info->min_key == NULL)
 				return -1;
 			break;
 		case VY_RUN_INFO_MAX_KEY:
 			tmp = pos;
 			mp_next(&pos);
-			run_info->max_key = vy_key_dup(tmp);
+			run_info->max_key = key_dup(tmp);
 			if (run_info->max_key == NULL)
 				return -1;
 			break;
@@ -2157,7 +2157,7 @@ vy_run_writer_start_page(struct vy_run_writer *writer,
 		return -1;
 	if (run->info.page_count == 0) {
 		assert(run->info.min_key == NULL);
-		run->info.min_key = vy_key_dup(key);
+		run->info.min_key = key_dup(key);
 		if (run->info.min_key == NULL)
 			return -1;
 	}
@@ -2311,7 +2311,7 @@ vy_run_writer_commit(struct vy_run_writer *writer)
 		goto out;
 
 	assert(run->info.max_key == NULL);
-	run->info.max_key = vy_key_dup(key);
+	run->info.max_key = key_dup(key);
 	if (run->info.max_key == NULL)
 		goto out;
 
@@ -2424,7 +2424,7 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 			if (key == NULL)
 				goto close_err;
 			if (run->info.min_key == NULL) {
-				run->info.min_key = vy_key_dup(key);
+				run->info.min_key = key_dup(key);
 				if (run->info.min_key == NULL)
 					goto close_err;
 			}
@@ -2454,7 +2454,7 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 	}
 
 	if (key != NULL) {
-		run->info.max_key = vy_key_dup(key);
+		run->info.max_key = key_dup(key);
 		if (run->info.max_key == NULL)
 			goto close_err;
 	}

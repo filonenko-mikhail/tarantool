@@ -1012,6 +1012,15 @@ tuple_bless(struct tuple *tuple)
 ssize_t
 tuple_to_buf(const struct tuple *tuple, char *buf, size_t size);
 
+/**
+ * Duplicate a raw key (MsgPack array).
+ * @param  key the key to duplicate.
+ * @retval not NULL Pointer to the key copy allocated with malloc().
+ * @retval     NULL Memory error.
+ */
+char *
+key_dup(const char *key);
+
 #if defined(__cplusplus)
 } /* extern "C" */
 
