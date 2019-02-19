@@ -1229,9 +1229,11 @@ lbox_merger_ipairs(struct lua_State *L)
 	lua_settop(L, 1); /* Pop sources, [opts]. */
 	/* Stack: merger_context. */
 
-	if (state->obuf != NULL)
+	if (state->obuf != NULL) {
+		merger_state_delete(L, state);
 		return luaL_error(L, "\"buffer\" option is forbidden with "
 				  "merger.pairs(<...>)");
+	}
 
 	luaL_loadstring(L, "return require('fun').wrap");
 	lua_call(L, 0, 1);
