@@ -801,18 +801,22 @@ tuple_format1_can_store_format2_tuples(struct tuple_format *format1,
 }
 
 /** @sa declaration for details. */
-int
-tuple_init_field_map(struct tuple_format *format, uint32_t *field_map,
-		     const char *tuple, bool validate)
+uint32_t *
+tuple_field_map_create(struct tuple_format *format, const char *tuple,
+		       bool validate, uint32_t *field_map_size,
+		       struct region *region)
 {
-	if (tuple_format_field_count(format) == 0)
-		return 0; /* Nothing to initialize */
+	assert(tuple_format_field_count(format) > 0);
+	*field_map_size = format->field_map_size;
+	uint32_t *field_map = region_alloc(region, *field_map_size);
+	if (field_map == NULL) {
+		diag_set(OutOfMemory, *field_map_size, "region_alloc",
+			 "field_map");
+		goto error;
+	}
+	field_map = (uint32_t *)((char *)field_map + *field_map_size);
 
-	struct region *region = &fiber()->gc;
-	size_t region_svp = region_used(region);
 	const char *pos = tuple;
-	int rc = 0;
-
 	/* Check to see if the tuple has a sufficient number of fields. */
 	uint32_t field_count = mp_decode_array(&pos);
 	if (validate && format->exact_field_count > 0 &&
@@ -853,8 +857,7 @@ tuple_init_field_map(struct tuple_format *format, uint32_t *field_map,
 	 * Nullify field map to be able to detect by 0,
 	 * which key fields are absent in tuple_field().
 	 */
-	memset((char *)field_map - format->field_map_size, 0,
-		format->field_map_size);
+	memset((char *)field_map - *field_map_size, 0, *field_map_size);
 	/*
 	 * Prepare mp stack of the size equal to the maximum depth
 	 * of the indexed field in the format::fields tree
@@ -978,10 +981,11 @@ finish:
 		}
 	}
 out:
-	region_truncate(region, region_svp);
-	return rc;
+	if (likely(field_map != NULL))
+		field_map = (uint32_t *)((char *)field_map - *field_map_size);
+	return field_map;
 error:
-	rc = -1;
+	field_map = NULL;
 	goto out;
 }
 
