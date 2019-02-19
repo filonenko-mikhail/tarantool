@@ -194,6 +194,8 @@ macro(luajit_build)
         endif()
         # Pass deployment target
         if ("${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "")
+            # DARWIN_VERSION <= 10.12 -> CMAKE_OSX_DEPLOYMENT_TARGET = 10.6
+            # DARWIN_VERSION >= 10.13 -> CMAKE_OSX_DEPLOYMENT_TARGET = 10.14
             execute_process(COMMAND sw_vers -productVersion
                 OUTPUT_VARIABLE PRODUCT_VERSION)
             message(STATUS "PRODUCT_VERSION=${PRODUCT_VERSION}")
