@@ -1038,7 +1038,7 @@ parse_sources(struct lua_State *L, int idx, struct merger_context *ctx,
 	      struct merger_state *state)
 {
 	/* Allocate sources array. */
-	uint32_t capacity = 8;
+	uint32_t capacity = lua_objlen(L, idx);
 	const ssize_t sources_size = capacity * sizeof(struct merger_source *);
 	state->sources = (struct merger_source **) malloc(sources_size);
 	if (state->sources == NULL) {
@@ -1053,23 +1053,6 @@ parse_sources(struct lua_State *L, int idx, struct merger_context *ctx,
 		lua_gettable(L, idx);
 		if (lua_isnil(L, -1))
 			break;
-
-		/* Grow sources array if needed. */
-		if (state->sources_count == capacity) {
-			capacity *= 2;
-			struct merger_source **new_sources;
-			const ssize_t new_sources_size =
-				capacity * sizeof(struct merger_source *);
-			new_sources = (struct merger_source **) realloc(
-				state->sources, new_sources_size);
-			if (new_sources == NULL) {
-				diag_set(OutOfMemory, new_sources_size / 2,
-					 "malloc", "new_sources");
-				luaT_pusherror(L, diag_last_error(diag_get()));
-				return 1;
-			}
-			state->sources = new_sources;
-		}
 
 		/* Create the new source. */
 		struct merger_source *source = merger_source_new(L, -1,
