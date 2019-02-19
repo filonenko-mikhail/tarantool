@@ -17,7 +17,7 @@ local function merger_usage(param)
     local msg = 'merger.{ipairs,pairs,select}(' ..
         'merger_context, ' ..
         '{source, source, ...}[, {' ..
-        'descending = <boolean> or <nil>, ' ..
+        'reverse = <boolean> or <nil>, ' ..
         'buffer = <cdata<struct ibuf>> or <nil>, ' ..
         'fetch_source = <function> or <nil>}])'
     if not param then
@@ -49,10 +49,10 @@ local bad_merger_methods_calls = {
         exp_err = merger_usage(nil),
     },
     {
-        'Bad opts.descending',
+        'Bad opts.reverse',
         sources = {},
-        opts = {descending = 1},
-        exp_err = merger_usage('descending'),
+        opts = {reverse = 1},
+        exp_err = merger_usage('reverse'),
     },
     {
         'Bad source',
@@ -241,9 +241,9 @@ local function sort_tuples(tuples, parts, opts)
     local function tuple_comparator_wrapper(a, b)
         local cmp = tuple_comparator(a, b, parts)
         if cmp < 0 then
-            return not opts.descending
+            return not opts.reverse
         elseif cmp > 0 then
-            return opts.descending
+            return opts.reverse
         else
             return false
         end
@@ -400,8 +400,8 @@ local function test_case_opts_str(opts)
         table.insert(params, 'output_type: ' .. opts.output_type)
     end
 
-    if opts.descending then
-        table.insert(params, 'descending')
+    if opts.reverse then
+        table.insert(params, 'reverse')
     end
 
     if opts.use_table_as_tuple then
@@ -431,7 +431,7 @@ local function run_merger(test, schema, tuples_cnt, sources_cnt, opts)
     -- Create a merger instance and fill options.
     local ctx = merger.context.new(key_def.new(schema.parts))
     local merger_opts = {
-        descending = opts.descending,
+        reverse = opts.reverse,
         fetch_source = fetch_source,
     }
     if opts.output_type == 'buffer' then
@@ -541,14 +541,14 @@ end
 -- Merging cases.
 for _, input_type in ipairs({'buffer', 'table', 'iterator'}) do
     for _, output_type in ipairs({'buffer', 'table', 'iterator'}) do
-        for _, descending in ipairs({false, true}) do
+        for _, reverse in ipairs({false, true}) do
             for _, use_table_as_tuple in ipairs({false, true}) do
                 for _, use_fetch_source in ipairs({false, true}) do
                     for _, schema in ipairs(schemas) do
                         run_case(test, schema, {
                             input_type = input_type,
                             output_type = output_type,
-                            descending = descending,
+                            reverse = reverse,
                             use_table_as_tuple = use_table_as_tuple,
                             use_fetch_source = use_fetch_source,
                         })

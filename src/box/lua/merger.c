@@ -146,8 +146,8 @@ struct merger_state {
 	/* Parsed sources. */
 	uint32_t sources_count;
 	struct merger_source **sources;
-	/* Ascending / descending order. */
-	int order;
+	/* Ascending (false) / descending (true) order. */
+	bool reverse;
 	/* Optional output buffer. */
 	struct ibuf *obuf;
 	/* Optional fetch_source() callback. */
@@ -956,7 +956,7 @@ merger_usage(struct lua_State *L, const char *param_name)
 	static const char *usage = "merger.{ipairs,pairs,select}("
 				   "merger_context, "
 				   "{source, source, ...}[, {"
-				   "descending = <boolean> or <nil>, "
+				   "reverse = <boolean> or <nil>, "
 				   "buffer = <cdata<struct ibuf>> or <nil>, "
 				   "fetch_source = <function> or <nil>}])";
 	if (param_name == NULL)
@@ -987,14 +987,14 @@ parse_opts(struct lua_State *L, int idx, struct merger_state *state)
 	if (!lua_istable(L, idx))
 		return merger_usage(L, NULL);
 
-	/* Parse descending to state->order. */
-	lua_pushstring(L, "descending");
+	/* Parse reverse. */
+	lua_pushstring(L, "reverse");
 	lua_gettable(L, idx);
 	if (!lua_isnil(L, -1)) {
 		if (lua_isboolean(L, -1))
-			state->order = lua_toboolean(L, -1) ? -1 : 1;
+			state->reverse = lua_toboolean(L, -1);
 		else
-			return merger_usage(L, "descending");
+			return merger_usage(L, "reverse");
 	}
 	lua_pop(L, 1);
 
@@ -1098,7 +1098,7 @@ merger_state_new(struct lua_State *L)
 	state->key_def = key_def_dup(ctx->key_def);
 	state->sources_count = 0;
 	state->sources = NULL;
-	state->order = 1;
+	state->reverse = false;
 	state->obuf = NULL;
 	state->fetch_source_ref = 0;
 
@@ -1136,8 +1136,8 @@ source_less(const heap_t *heap, const struct heap_node *a,
 		return true;
 	struct merger_state *state = container_of(heap, struct merger_state,
 						  heap);
-	return state->order * box_tuple_compare(left->tuple, right->tuple,
-						state->key_def) < 0;
+	int cmp = box_tuple_compare(left->tuple, right->tuple, state->key_def);
+	return state->reverse ? cmp >= 0 : cmp < 0;
 }
 
 /**
