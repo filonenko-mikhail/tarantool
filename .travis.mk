@@ -47,9 +47,10 @@ test_ubuntu: deps_ubuntu
 deps_osx:
 	brew update
 	brew install openssl readline curl icu4c --force
-	pip -h >/dev/null 2>&1 || curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | python
-	pip --version
-	virtualenv -h >/dev/null 2>&1 || ( brew install pyenv-virtualenv --force ; pip install virtualenv )
+	virtualenv -h >/dev/null 2>&1 || \
+		( pip -h >/dev/null 2>&1 || ( curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | python && pip --version ) && \
+		brew install pyenv-virtualenv --force && \
+		pip install virtualenv )
 
 test_osx: deps_osx
 	cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfoWError ${CMAKE_EXTRA_PARAMS}
@@ -62,6 +63,7 @@ test_osx: deps_osx
 	make -j8
 	virtualenv ./test-env && \
 	. ./test-env/bin/activate && \
+	pip -h >/dev/null 2>&1 || ( curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | python && pip --version ) && \
 	pip install -r test-run/requirements.txt && \
 	cd test && python test-run.py -j 1 unit/ app/ app-tap/ box/ box-tap/ && \
 	deactivate
