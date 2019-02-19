@@ -1436,8 +1436,8 @@ vy_get_by_raw_key(struct vy_lsm *lsm, struct vy_tx *tx,
 		  const char *key_raw, uint32_t part_count,
 		  struct tuple **result)
 {
-	struct tuple *key = vy_stmt_new_select(lsm->env->key_format,
-					       key_raw, part_count);
+	struct tuple *key = vy_stmt_new_key(lsm->env->key_format,
+					    key_raw, part_count);
 	if (key == NULL)
 		return -1;
 	int rc = vy_get(lsm, tx, rv, key, result);
@@ -2914,14 +2914,14 @@ vy_prepare_send_slice(struct vy_join_ctx *ctx,
 		goto out;
 
 	if (slice_info->begin != NULL) {
-		begin = vy_key_from_msgpack(ctx->env->lsm_env.key_format,
-					    slice_info->begin);
+		begin = vy_stmt_new_key_from_array(ctx->env->lsm_env.key_format,
+						   slice_info->begin);
 		if (begin == NULL)
 			goto out;
 	}
 	if (slice_info->end != NULL) {
-		end = vy_key_from_msgpack(ctx->env->lsm_env.key_format,
-					  slice_info->end);
+		end = vy_stmt_new_key_from_array(ctx->env->lsm_env.key_format,
+						 slice_info->end);
 		if (end == NULL)
 			goto out;
 	}
@@ -3793,7 +3793,7 @@ vinyl_index_create_iterator(struct index *base, enum iterator_type type,
 			 "mempool", "struct vinyl_iterator");
 		return NULL;
 	}
-	it->key = vy_stmt_new_select(lsm->env->key_format, key, part_count);
+	it->key = vy_stmt_new_key(lsm->env->key_format, key, part_count);
 	if (it->key == NULL) {
 		mempool_free(&env->iterator_pool, it);
 		return NULL;

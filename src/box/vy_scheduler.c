@@ -1150,10 +1150,10 @@ vy_task_dump_complete(struct vy_task *task)
 	 * intersecting the run or NULL if the run itersects all
 	 * ranges.
 	 */
-	min_key = vy_key_from_msgpack(key_format, new_run->info.min_key);
+	min_key = vy_stmt_new_key_from_array(key_format, new_run->info.min_key);
 	if (min_key == NULL)
 		goto fail;
-	max_key = vy_key_from_msgpack(key_format, new_run->info.max_key);
+	max_key = vy_stmt_new_key_from_array(key_format, new_run->info.max_key);
 	if (max_key == NULL) {
 		tuple_unref(min_key);
 		goto fail;

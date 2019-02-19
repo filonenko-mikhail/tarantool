@@ -74,7 +74,7 @@ vy_lsm_env_create(struct vy_lsm_env *env, const char *path,
 		  vy_upsert_thresh_cb upsert_thresh_cb,
 		  void *upsert_thresh_arg)
 {
-	env->empty_key = vy_stmt_new_select(key_format, NULL, 0);
+	env->empty_key = vy_stmt_new_key(key_format, NULL, 0);
 	if (env->empty_key == NULL)
 		return -1;
 	env->path = path;
@@ -387,14 +387,14 @@ vy_lsm_recover_slice(struct vy_lsm *lsm, struct vy_range *range,
 	struct vy_run *run;
 
 	if (slice_info->begin != NULL) {
-		begin = vy_key_from_msgpack(lsm->env->key_format,
-					    slice_info->begin);
+		begin = vy_stmt_new_key_from_array(lsm->env->key_format,
+						   slice_info->begin);
 		if (begin == NULL)
 			goto out;
 	}
 	if (slice_info->end != NULL) {
-		end = vy_key_from_msgpack(lsm->env->key_format,
-					  slice_info->end);
+		end = vy_stmt_new_key_from_array(lsm->env->key_format,
+						 slice_info->end);
 		if (end == NULL)
 			goto out;
 	}
@@ -433,14 +433,14 @@ vy_lsm_recover_range(struct vy_lsm *lsm,
 	struct vy_range *range = NULL;
 
 	if (range_info->begin != NULL) {
-		begin = vy_key_from_msgpack(lsm->env->key_format,
-					    range_info->begin);
+		begin = vy_stmt_new_key_from_array(lsm->env->key_format,
+						   range_info->begin);
 		if (begin == NULL)
 			goto out;
 	}
 	if (range_info->end != NULL) {
-		end = vy_key_from_msgpack(lsm->env->key_format,
-					  range_info->end);
+		end = vy_stmt_new_key_from_array(lsm->env->key_format,
+						 range_info->end);
 		if (end == NULL)
 			goto out;
 	}
@@ -1069,8 +1069,8 @@ vy_lsm_split_range(struct vy_lsm *lsm, struct vy_range *range)
 	/*
 	 * Determine new ranges' boundaries.
 	 */
-	struct tuple *split_key = vy_key_from_msgpack(key_format,
-						      split_key_raw);
+	struct tuple *split_key = vy_stmt_new_key_from_array(key_format,
+							     split_key_raw);
 	if (split_key == NULL)
 		goto fail;
 
