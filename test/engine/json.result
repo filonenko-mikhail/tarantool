@@ -683,3 +683,27 @@ town:select()
 s:drop()
 ---
 ...
+--
+-- gh-1260: Multikey indexes
+--
+s = box.schema.space.create('withdata')
+---
+...
+idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[1].a'}, {3, 'str', path = '["FIO"][*]["fname"][*].b'}}})
+---
+- error: 'Can''t create or modify index ''idx'' in space ''withdata'': multikey index
+    feature is not supported yet'
+...
+idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[*].a'}, {3, 'str', path = '["FIO"][*]["fname"][*].b'}}})
+---
+- error: 'Can''t create or modify index ''idx'' in space ''withdata'': multikey index
+    feature is not supported yet'
+...
+idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[1].a'}, {3, 'str', path = '["FIO"][*]["fname"][2].b'}}})
+---
+- error: 'Can''t create or modify index ''idx'' in space ''withdata'': multikey index
+    feature is not supported yet'
+...
+s:drop()
+---
+...

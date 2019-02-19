@@ -244,6 +244,56 @@ index_def_cmp(const struct index_def *key1, const struct index_def *key2)
 			    key2->key_def->parts, key2->key_def->part_count);
 }
 
+/**
+ * Test whether key_parts a and b are compatible:
+ *  + field numbers are differ OR
+ *  + json paths are differ
+ * Also perform integrity check: parts must not define multikey
+ * index.
+ */
+static bool
+key_parts_are_compatible(struct key_part *a, struct key_part *b,
+			 struct index_def *index_def, const char *space_name)
+{
+	if (a->fieldno != b->fieldno)
+		return true;
+	struct json_lexer lexer_a, lexer_b;
+	json_lexer_create(&lexer_a, a->path, a->path_len, TUPLE_INDEX_BASE);
+	json_lexer_create(&lexer_b, b->path, b->path_len, TUPLE_INDEX_BASE);
+	struct json_token token_a, token_b;
+	/* For the sake of json_token_cmp(). */
+	token_a.parent = NULL;
+	token_b.parent = NULL;
+	int a_rc, b_rc;
+	int token_idx = 0,  differ_token_idx = 0;
+	int a_multikey_rank = 0, b_multikey_rank = 0;
+	while ((a_rc = json_lexer_next_token(&lexer_a, &token_a)) == 0 &&
+	       (b_rc = json_lexer_next_token(&lexer_b, &token_b)) == 0 &&
+	       token_a.type != JSON_TOKEN_END &&
+	       token_b.type != JSON_TOKEN_END) {
+		token_idx++;
+		if (differ_token_idx == 0) {
+			if (json_token_cmp(&token_a, &token_b) != 0)
+				differ_token_idx = token_idx;
+		}
+		if (token_a.type == JSON_TOKEN_ANY)
+			a_multikey_rank = token_idx;
+		if (token_b.type == JSON_TOKEN_ANY)
+			b_multikey_rank = token_idx;
+	}
+	if (a_multikey_rank > 0 || b_multikey_rank > 0) {
+		diag_set(ClientError, ER_MODIFY_INDEX,
+			 index_def->name, space_name,
+			 "multikey index feature is not supported yet");
+		return false;
+	}
+	if (differ_token_idx > 0 || token_b.type != token_a.type)
+		return true;
+	diag_set(ClientError, ER_MODIFY_INDEX, index_def->name, space_name,
+		"same key part is indexed twice");
+	return false;
+}
+
 bool
 index_def_is_valid(struct index_def *index_def, const char *space_name)
 
@@ -282,15 +332,9 @@ index_def_is_valid(struct index_def *index_def, const char *space_name)
 			 */
 			struct key_part *part_a = &index_def->key_def->parts[i];
 			struct key_part *part_b = &index_def->key_def->parts[j];
-			if (part_a->fieldno == part_b->fieldno &&
-			    json_path_cmp(part_a->path, part_a->path_len,
-					  part_b->path, part_b->path_len,
-					  TUPLE_INDEX_BASE) == 0) {
-				diag_set(ClientError, ER_MODIFY_INDEX,
-					 index_def->name, space_name,
-					 "same key part is indexed twice");
+			if (!key_parts_are_compatible(part_a, part_b, index_def,
+						      space_name))
 				return false;
-			}
 		}
 	}
 	return true;

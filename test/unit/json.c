@@ -211,7 +211,7 @@ void
 test_tree()
 {
 	header();
-	plan(58);
+	plan(63);
 
 	struct json_tree tree;
 	int rc = json_tree_create(&tree);
@@ -414,6 +414,41 @@ test_tree()
 	json_tree_foreach_entry_safe(node, &tree.root, struct test_struct,
 				     node, node_tmp)
 		json_tree_del(&tree, &node->node);
+
+	/* Test multikey tokens. */
+	records_idx = 0;
+	char *path_multikey = "[*][\"data\"]";
+	node = test_add_path(&tree, path_multikey, strlen(path_multikey),
+			     records, &records_idx);
+	is(node, &records[1], "add path '%s'", path_multikey);
+
+	node = json_tree_lookup_path_entry(&tree, &tree.root, path_multikey,
+					   strlen(path_multikey), INDEX_BASE,
+					   struct test_struct, node);
+	is(node, &records[1], "lookup path '%s'", path_multikey);
+
+	token = &records[records_idx++].node;
+	token->type = JSON_TOKEN_NUM;
+	token->num = 3;
+	node = json_tree_lookup_entry(&tree, &tree.root, token,
+				      struct test_struct, node);
+	is(node, &records[0], "lookup numeric token in multikey node");
+
+	token->type = JSON_TOKEN_ANY;
+	node = json_tree_lookup_entry(&tree, &tree.root, token,
+				      struct test_struct, node);
+	is(node, &records[0], "lookup any token in multikey node");
+
+	token->type = JSON_TOKEN_STR;
+	token->str = "invalid";
+	token->len = strlen("invalid");
+	node = json_tree_lookup_entry(&tree, &tree.root, token,
+				      struct test_struct, node);
+	is(node, NULL, "lookup string token in multikey node");
+
+	json_tree_foreach_entry_safe(node, &tree.root, struct test_struct,
+				     node, node_tmp)
+		json_tree_del(&tree, &node->node);
 	json_tree_destroy(&tree);
 
 	check_plan();
@@ -433,7 +468,7 @@ test_path_cmp()
 		{"Data[1][\"Info\"].fname[1]", -1},
 	};
 	header();
-	plan(lengthof(rc) + 2);
+	plan(lengthof(rc) + 3);
 	for (size_t i = 0; i < lengthof(rc); ++i) {
 		const char *path = rc[i].path;
 		int errpos = rc[i].errpos;
@@ -450,6 +485,13 @@ test_path_cmp()
 	ret = json_path_validate(invalid, strlen(invalid), INDEX_BASE);
 	is(ret, 6, "path %s error pos %d expected %d", invalid, ret, 6);
 
+	char *multikey_a = "Data[*][\"FIO\"].fname[*]";
+	char *multikey_b = "[\"Data\"][*].FIO[\"fname\"][*]";
+	ret = json_path_cmp(multikey_a, strlen(multikey_a), multikey_b,
+			    strlen(multikey_b), INDEX_BASE);
+	is(ret, 0, "path cmp result \"%s\" with \"%s\": have %d, expected %d",
+	   multikey_a, multikey_b, ret, 0);
+
 	check_plan();
 	footer();
 }
@@ -463,14 +505,14 @@ test_path_snprint()
 	struct json_tree tree;
 	int rc = json_tree_create(&tree);
 	fail_if(rc != 0);
-	struct test_struct records[5];
-	const char *path = "[1][20][\"file\"][8]";
+	struct test_struct records[6];
+	const char *path = "[1][*][20][\"file\"][8]";
 	int path_len = strlen(path);
 
 	int records_idx = 0;
 	struct test_struct *node, *node_tmp;
 	node = test_add_path(&tree, path, path_len, records, &records_idx);
-	fail_if(&node->node != &records[3].node);
+	fail_if(&node->node != &records[4].node);
 
 	char buf[64];
 	int bufsz = sizeof(buf);
