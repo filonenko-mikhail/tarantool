@@ -1147,32 +1147,37 @@ source_less(const heap_t *heap, const struct heap_node *a,
  * The reference counter of the tuple is increased (in
  * source->vtab->next()).
  *
- * Return NULL when all sources are drained.
+ * Return 1 and set @a out (output tuple) to NULL when all sources
+ * are drained.
+ *
+ * Return -1 at an error and set a diag.
+ *
+ * Otherwise return 0 and store the next tuple in @a out.
  */
-static struct tuple *
+static int
 merger_next(struct lua_State *L, struct merger_context *ctx,
-	    struct merger_state *state)
+	    struct merger_state *state, struct tuple **out)
 {
 	struct heap_node *hnode = merger_heap_top(&state->heap);
-	if (hnode == NULL)
-		return NULL;
+	if (hnode == NULL) {
+		*out = NULL;
+		return 1;
+	}
 
 	struct merger_source *source = container_of(hnode, struct merger_source,
 						    hnode);
 	struct tuple *tuple = source->tuple;
 	assert(tuple != NULL);
 	int rc = source->vtab->next(source, ctx->format, state, L);
-	if (rc != 0) {
-		luaT_error(L);
-		unreachable();
-		return NULL;
-	}
+	if (rc != 0)
+		return -1;
 	if (source->tuple == NULL)
 		merger_heap_delete(&state->heap, hnode);
 	else
 		merger_heap_update(&state->heap, hnode);
 
-	return tuple;
+	*out = tuple;
+	return 0;
 }
 
 /**
@@ -1196,7 +1201,9 @@ lbox_merger_gen(struct lua_State *L)
 				     "lbox_merger_gen(merger_context, "
 				     "merger_state)");
 
-	struct tuple *tuple = merger_next(L, ctx, state);
+	struct tuple *tuple;
+	if (merger_next(L, ctx, state, &tuple) < 0)
+		return luaT_error(L);
 	if (tuple == NULL) {
 		lua_pushnil(L);
 		lua_pushnil(L);
@@ -1260,7 +1267,7 @@ lbox_merger_ipairs(struct lua_State *L)
  *
  * It is the helper for lbox_merger_select().
  */
-static void
+static int
 encode_result_buffer(struct lua_State *L, struct merger_context *ctx,
 		     struct merger_state *state)
 {
@@ -1276,7 +1283,9 @@ encode_result_buffer(struct lua_State *L, struct merger_context *ctx,
 
 	/* Fetch, merge and copy tuples to the buffer. */
 	struct tuple *tuple;
-	while ((tuple = merger_next(L, ctx, state)) != NULL) {
+	int rc;
+	while ((rc = merger_next(L, ctx, state, &tuple)) == 0) {
+		assert(tuple != NULL);
 		uint32_t bsize = tuple->bsize;
 		ibuf_reserve(obuf, bsize);
 		memcpy(obuf->wpos, tuple_data(tuple), bsize);
@@ -1286,8 +1295,13 @@ encode_result_buffer(struct lua_State *L, struct merger_context *ctx,
 		++result_len;
 	}
 
+	if (rc < 0)
+		return luaT_error(L);
+
 	/* Write the real array size. */
 	mp_store_u32(obuf->wpos - result_len_offset, result_len);
+
+	return 1;
 }
 
 /**
@@ -1306,12 +1320,17 @@ create_result_table(struct lua_State *L, struct merger_context *ctx,
 
 	/* Fetch, merge and save tuples to the table. */
 	struct tuple *tuple;
-	while ((tuple = merger_next(L, ctx, state)) != NULL) {
+	int rc;
+	while ((rc = merger_next(L, ctx, state, &tuple)) == 0) {
+		assert(tuple != NULL);
 		luaT_pushtuple(L, tuple);
 		lua_rawseti(L, -2, cur);
 		box_tuple_unref(tuple);
 		++cur;
 	}
+
+	if (rc < 0)
+		return luaT_error(L);
 
 	return 1;
 }
