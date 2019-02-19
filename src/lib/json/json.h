@@ -66,6 +66,7 @@ struct json_lexer {
 enum json_token_type {
 	JSON_TOKEN_NUM,
 	JSON_TOKEN_STR,
+	JSON_TOKEN_ANY,
 	/** Lexer reached end of path. */
 	JSON_TOKEN_END,
 };
@@ -113,6 +114,10 @@ struct json_token {
 	 * a JSON tree root.
 	 */
 	int sibling_idx;
+	/**
+	 * True when it has the only child token JSON_TOKEN_ANY.
+	 */
+	bool is_multikey;
 	/**
 	 * Hash value of the token. Used for lookups in a JSON tree.
 	 * For more details, see the comment to json_tree::hash.
@@ -237,6 +242,12 @@ int
 json_lexer_next_token(struct json_lexer *lexer, struct json_token *token);
 
 /**
+ * Compare JSON token keys.
+ */
+int
+json_token_cmp(const struct json_token *a, const struct json_token *b);
+
+/**
  * Compare two JSON paths using Lexer class.
  * - in case of paths that have same token-sequence prefix,
  *   the path having more tokens is assumed to be greater
@@ -307,10 +318,16 @@ json_tree_lookup(struct json_tree *tree, struct json_token *parent,
 		 const struct json_token *token)
 {
 	struct json_token *ret = NULL;
+	if (unlikely(parent->is_multikey &&
+		     (token->type == JSON_TOKEN_NUM ||
+		      token->type == JSON_TOKEN_ANY))) {
+		assert(parent->max_child_idx == 0);
+		return parent->children[0];
+	}
 	if (likely(token->type == JSON_TOKEN_NUM)) {
-		ret = (int)token->num < parent->children_capacity ?
+		ret = token->num <= parent->max_child_idx ?
 		      parent->children[token->num] : NULL;
-	} else {
+	} else if (token->type == JSON_TOKEN_STR) {
 		ret = json_tree_lookup_slowpath(tree, parent, token);
 	}
 	return ret;
