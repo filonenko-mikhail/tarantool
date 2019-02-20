@@ -285,22 +285,6 @@ local function gen_fetch_source(schema, tuples, opts)
     end
 
     local fetch_source = function(source, last_tuple, processed)
-        assert(source.type == input_type)
-        if source.type == 'buffer' then
-            assert(type(source.buffer) == 'cdata')
-            assert(ffi.istype('struct ibuf', source.buffer))
-            assert(source.table == nil)
-        elseif source.type == 'table' then
-            assert(source.type == 'table')
-            assert(type(source.table) == 'table')
-            assert(source.buffer == nil)
-        elseif source.type == 'iterator' then
-            assert(source.type == 'iterator')
-            assert(source.table == nil)
-            assert(source.buffer == nil)
-        else
-            assert(false)
-        end
         local idx = source.idx
         local last_pos = last_positions[idx]
         local exp_last_tuple = tuples[idx][last_pos]
@@ -312,11 +296,13 @@ local function gen_fetch_source(schema, tuples, opts)
             FETCH_BLOCK_SIZE):totable()
         assert(#data > 0 or processed == #tuples[idx])
         last_positions[idx] = last_pos + #data
-        if source.type == 'table' then
+        if input_type == 'table' then
             return data
-        elseif source.type == 'buffer' then
-            msgpackffi.internal.encode_r(source.buffer, data, 0)
-        elseif source.type == 'iterator' then
+        elseif input_type == 'buffer' then
+            local buf = buffer.ibuf()
+            msgpackffi.internal.encode_r(buf, data, 0)
+            return buf
+        elseif input_type == 'iterator' then
             return fun.iter(data)
         else
             assert(false)

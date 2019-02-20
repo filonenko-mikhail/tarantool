@@ -247,20 +247,24 @@ encode_header(struct ibuf *obuf, uint32_t result_len)
 	obuf->wpos = mp_encode_array(obuf->wpos, result_len);
 }
 
+/**
+ * Push certain fields of a source to Lua.
+ */
+static void
+luaL_merger_source_push(const struct merger_source *source, struct lua_State *L)
+{
+	lua_createtable(L, 0, 1);
+
+	lua_pushinteger(L, source->idx + 1);
+	lua_setfield(L, -2, "idx");
+}
+
 /* }}} */
 
 /* {{{ Buffer merger source */
 
 struct merger_source_buffer {
 	struct merger_source base;
-	/*
-	 * The reference is needed to push the
-	 * buffer to Lua as a part of the source
-	 * table to the fetch_source callback.
-	 *
-	 * See luaL_merger_source_buffer_push().
-	 */
-	int ref;
 	struct ibuf *buf;
 	/*
 	 * A merger stops before end of a buffer
@@ -312,8 +316,6 @@ luaL_merger_source_buffer_new(struct lua_State *L, int idx, int ordinal,
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
 
-	lua_pushvalue(L, idx); /* Popped by luaL_ref(). */
-	source->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	source->buf = check_ibuf(L, idx);
 	assert(source->buf != NULL);
 	source->remaining_tuples_cnt = 0;
@@ -331,7 +333,6 @@ luaL_merger_source_buffer_new(struct lua_State *L, int idx, int ordinal,
 	if (state->fetch_source_ref <= 0) {
 		if (decode_header(source->buf,
 		    &source->remaining_tuples_cnt) != 0) {
-			luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
 			free(source);
 			diag_set(IllegalParams, "Invalid merge source %d",
 				 ordinal + 1);
@@ -341,25 +342,6 @@ luaL_merger_source_buffer_new(struct lua_State *L, int idx, int ordinal,
 
 	source->base.vtab = &merger_source_buffer_vtab;
 	return &source->base;
-}
-
-/**
- * Push certain fields of a source to Lua.
- */
-static void
-luaL_merger_source_buffer_push(const struct merger_source_buffer *source,
-			       struct lua_State *L)
-{
-	lua_createtable(L, 0, 3);
-
-	lua_pushinteger(L, source->base.idx + 1);
-	lua_setfield(L, -2, "idx");
-
-	lua_pushstring(L, "buffer");
-	lua_setfield(L, -2, "type");
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, source->ref);
-	lua_setfield(L, -2, "buffer");
 }
 
 /**
@@ -379,15 +361,23 @@ luaL_merger_source_buffer_fetch(struct merger_source_buffer *source,
 	/* Push fetch callback. */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, state->fetch_source_ref);
 	/* Push source, last_tuple, processed. */
-	luaL_merger_source_buffer_push(source, L);
+	luaL_merger_source_push(&source->base, L);
 	if (last_tuple == NULL)
 		lua_pushnil(L);
 	else
 		luaT_pushtuple(L, last_tuple);
 	lua_pushinteger(L, source->base.processed);
 	/* Invoke the callback and process data. */
-	if (luaT_call(L, 3, 0) != 0)
+	if (luaT_call(L, 3, 1) != 0)
 		return -1;
+	/* No more data: do nothing. */
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 1);
+		return 0;
+	}
+	source->buf = check_ibuf(L, -1);
+	assert(source->buf != NULL);
+	lua_pop(L, 1);
 	/* Update remaining_tuples_cnt and skip the header. */
 	if (decode_header(source->buf, &source->remaining_tuples_cnt) != 0) {
 		diag_set(IllegalParams, "Invalid merge source %d",
@@ -401,12 +391,10 @@ luaL_merger_source_buffer_fetch(struct merger_source_buffer *source,
 
 static void
 luaL_merger_source_buffer_delete(struct merger_source *base,
-				 struct lua_State *L)
+				 MAYBE_UNUSED struct lua_State *L)
 {
 	struct merger_source_buffer *source = container_of(base,
 		struct merger_source_buffer, base);
-
-	luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
 
 	if (base->tuple != NULL)
 		box_tuple_unref(base->tuple);
@@ -536,25 +524,6 @@ luaL_merger_source_table_new(struct lua_State *L, int idx, int ordinal,
 }
 
 /**
- * Push certain fields of a source to Lua.
- */
-static void
-luaL_merger_source_table_push(const struct merger_source_table *source,
-			      struct lua_State *L)
-{
-	lua_createtable(L, 0, 3);
-
-	lua_pushinteger(L, source->base.idx + 1);
-	lua_setfield(L, -2, "idx");
-
-	lua_pushstring(L, "table");
-	lua_setfield(L, -2, "type");
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, source->ref);
-	lua_setfield(L, -2, "table");
-}
-
-/**
  * Call a user provided function to fill the source.
  *
  * Return 0 at success and -1 at error (set a diag).
@@ -570,7 +539,7 @@ luaL_merger_source_table_fetch(struct merger_source_table *source,
 	/* Push fetch callback. */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, state->fetch_source_ref);
 	/* Push source, last_tuple, processed. */
-	luaL_merger_source_table_push(source, L);
+	luaL_merger_source_push(&source->base, L);
 	if (last_tuple == NULL)
 		lua_pushnil(L);
 	else
@@ -720,22 +689,6 @@ luaL_merger_source_iterator_new(struct lua_State *L, int idx, int ordinal,
 }
 
 /**
- * Push certain fields of a source to Lua.
- */
-static void
-luaL_merger_source_iterator_push(const struct merger_source_iterator *source,
-				 struct lua_State *L)
-{
-	lua_createtable(L, 0, 2);
-
-	lua_pushinteger(L, source->base.idx + 1);
-	lua_setfield(L, -2, "idx");
-
-	lua_pushstring(L, "iterator");
-	lua_setfield(L, -2, "type");
-}
-
-/**
  * Call a user provided function to fill the source.
  *
  * Return 0 at success and -1 at error (set a diag).
@@ -751,7 +704,7 @@ luaL_merger_source_iterator_fetch(struct merger_source_iterator *source,
 	/* Push fetch callback. */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, state->fetch_source_ref);
 	/* Push source, last_tuple, processed. */
-	luaL_merger_source_iterator_push(source, L);
+	luaL_merger_source_push(&source->base, L);
 	if (last_tuple == NULL)
 		lua_pushnil(L);
 	else
