@@ -597,8 +597,8 @@ static void
 luaL_merger_source_table_delete(struct merger_source *base,
 				struct lua_State *L)
 {
-	struct merger_source_buffer *source = container_of(base,
-		struct merger_source_buffer, base);
+	struct merger_source_table *source = container_of(base,
+		struct merger_source_table, base);
 
 	luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
 
