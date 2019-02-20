@@ -70,6 +70,8 @@ static uint32_t merger_context_type_id = 0;
 static uint32_t merger_state_type_id = 0;
 static uint32_t ibuf_type_id = 0;
 
+enum { MERGER_SOURCE_REF_MAX = INT_MAX };
+
 /* {{{ Merger structures */
 
 struct merger_source;
@@ -79,6 +81,9 @@ struct merger_state;
 struct merger_source_vtab {
 	/**
 	 * Free the merger source.
+	 *
+	 * Don't call it directly, use merger_source_unref()
+	 * instead.
 	 *
 	 * We need to know Lua state here, because sources of
 	 * table and iterator types are saved as references within
@@ -114,6 +119,8 @@ struct merger_source {
 	 * A source is the heap node. Compared by the next tuple.
 	 */
 	struct heap_node hnode;
+	/* Reference counter. */
+	int refs;
 };
 
 /**
@@ -261,6 +268,33 @@ luaL_merger_source_push(const struct merger_source *source, struct lua_State *L)
 
 /* }}} */
 
+/* {{{ Common merger source functions */
+
+/**
+ * Increment a merger source reference counter.
+ */
+static void
+merger_source_ref(struct merger_source *source)
+{
+	if (unlikely(source->refs >= MERGER_SOURCE_REF_MAX))
+		panic("Merger source reference counter overflow");
+	++source->refs;
+}
+
+/**
+ * Decrement a merger source reference counter. When it has
+ * reached zero, free the source.
+ */
+static void
+merger_source_unref(struct merger_source *source, struct lua_State *L)
+{
+	assert(source->refs - 1 >= 0);
+	if (--source->refs == 0)
+		source->vtab->delete(source, L);
+}
+
+/* }}} */
+
 /* {{{ Buffer merger source */
 
 struct merger_source_buffer {
@@ -315,6 +349,7 @@ luaL_merger_source_buffer_new(struct lua_State *L, int idx, int ordinal,
 	source->base.processed = 0;
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
+	source->base.refs = 0;
 
 	source->buf = check_ibuf(L, idx);
 	assert(source->buf != NULL);
@@ -514,6 +549,7 @@ luaL_merger_source_table_new(struct lua_State *L, int idx, int ordinal,
 	source->base.processed = 0;
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
+	source->base.refs = 0;
 
 	lua_pushvalue(L, idx); /* Popped by luaL_ref(). */
 	source->ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -677,6 +713,7 @@ luaL_merger_source_iterator_new(struct lua_State *L, int idx, int ordinal,
 	source->base.processed = 0;
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
+	source->base.refs = 0;
 
 	source->it = luaL_iterator_new(L, idx);
 	if (source->it == NULL) {
@@ -944,7 +981,7 @@ merger_state_delete(struct lua_State *L, struct merger_state *state)
 	for (uint32_t i = 0; i < state->sources_count; ++i) {
 		assert(state->sources != NULL);
 		assert(state->sources[i] != NULL);
-		state->sources[i]->vtab->delete(state->sources[i], L);
+		merger_source_unref(state->sources[i], L);
 	}
 
 	if (state->sources != NULL)
@@ -1084,6 +1121,7 @@ parse_sources(struct lua_State *L, int idx, struct merger_context *ctx,
 			return 1;
 		state->sources[state->sources_count] = source;
 		++state->sources_count;
+		merger_source_ref(source);
 	}
 	lua_pop(L, state->sources_count + 1);
 
