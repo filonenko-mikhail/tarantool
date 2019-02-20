@@ -589,7 +589,6 @@ luaL_merger_source_table_fetch(struct merger_source_table *source,
 	source->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	source->next_idx = 1;
 	return 0;
-
 }
 
 /* Virtual methods */
@@ -720,6 +719,61 @@ luaL_merger_source_iterator_new(struct lua_State *L, int idx, int ordinal,
 	return &source->base;
 }
 
+/**
+ * Push certain fields of a source to Lua.
+ */
+static void
+luaL_merger_source_iterator_push(const struct merger_source_iterator *source,
+				 struct lua_State *L)
+{
+	lua_createtable(L, 0, 2);
+
+	lua_pushinteger(L, source->base.idx + 1);
+	lua_setfield(L, -2, "idx");
+
+	lua_pushstring(L, "iterator");
+	lua_setfield(L, -2, "type");
+}
+
+/**
+ * Call a user provided function to fill the source.
+ *
+ * Return 0 at success and -1 at error (set a diag).
+ */
+static int
+luaL_merger_source_iterator_fetch(struct merger_source_iterator *source,
+				  const struct merger_state *state,
+				  struct tuple *last_tuple, struct lua_State *L)
+{
+	/* No fetch callback: do nothing. */
+	if (state->fetch_source_ref <= 0)
+		return 0;
+	/* Push fetch callback. */
+	lua_rawgeti(L, LUA_REGISTRYINDEX, state->fetch_source_ref);
+	/* Push source, last_tuple, processed. */
+	luaL_merger_source_iterator_push(source, L);
+	if (last_tuple == NULL)
+		lua_pushnil(L);
+	else
+		luaT_pushtuple(L, last_tuple);
+	lua_pushinteger(L, source->base.processed);
+	/* Invoke the callback and process data. */
+	if (luaT_call(L, 3, 3) != 0)
+		return -1;
+	/* No more data: do nothing. */
+	if (lua_isnil(L, -3)) {
+		lua_pop(L, 3);
+		return 0;
+	}
+	/* Set the new iterator as the source. */
+	luaL_iterator_delete(L, source->it);
+	source->it = luaL_iterator_new(L, 0);
+	lua_pop(L, 3);
+	if (source->it == NULL)
+		return -1;
+	return 0;
+}
+
 /* Virtual methods */
 
 static void
@@ -748,11 +802,27 @@ luaL_merger_source_iterator_next(struct merger_source *base,
 	struct merger_source_iterator *source = container_of(base,
 		struct merger_source_iterator, base);
 
+	struct tuple *last_tuple = base->tuple;
 	base->tuple = NULL;
 
 	int nresult = luaL_iterator_next(L, source->it);
-	if (nresult == 0)
-		return 0;
+	/*
+	 * If all data were processed, try to fetch more.
+	 */
+	if (nresult == 0) {
+		int rc = luaL_merger_source_iterator_fetch(source, state,
+							   last_tuple, L);
+		if (rc != 0)
+			return -1;
+		/*
+		 * Retry tuple extracting after fetching
+		 * of the source.
+		 */
+		nresult = luaL_iterator_next(L, source->it);
+		if (nresult == 0)
+			return 0;
+	}
+
 	base->tuple = luaT_tuple_new(L, -nresult + 1, format);
 	if (base->tuple == NULL)
 		return -1;

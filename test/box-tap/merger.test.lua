@@ -274,7 +274,13 @@ local function gen_fetch_source(schema, tuples, opts)
     local sources = {}
     local last_positions = {}
     for i = 1, sources_cnt do
-        sources[i] = input_type == 'table' and {} or buffer.ibuf()
+        if input_type == 'buffer' then
+            sources[i] = buffer.ibuf()
+        elseif input_type == 'table' then
+            sources[i] = {}
+        elseif input_type == 'iterator' then
+            sources[i] = {fun.iter({})}
+        end
         last_positions[i] = 0
     end
 
@@ -284,10 +290,16 @@ local function gen_fetch_source(schema, tuples, opts)
             assert(type(source.buffer) == 'cdata')
             assert(ffi.istype('struct ibuf', source.buffer))
             assert(source.table == nil)
-        else
+        elseif source.type == 'table' then
             assert(source.type == 'table')
             assert(type(source.table) == 'table')
             assert(source.buffer == nil)
+        elseif source.type == 'iterator' then
+            assert(source.type == 'iterator')
+            assert(source.table == nil)
+            assert(source.buffer == nil)
+        else
+            assert(false)
         end
         local idx = source.idx
         local last_pos = last_positions[idx]
@@ -304,6 +316,8 @@ local function gen_fetch_source(schema, tuples, opts)
             return data
         elseif source.type == 'buffer' then
             msgpackffi.internal.encode_r(source.buffer, data, 0)
+        elseif source.type == 'iterator' then
+            return fun.iter(data)
         else
             assert(false)
         end
@@ -320,7 +334,6 @@ local function prepare_data(schema, tuples_cnt, sources_cnt, opts)
 
     local tuples = {}
     local exp_result = {}
-    local fetch_source
 
     -- Ensure empty sources are empty table and not nil.
     for i = 1, sources_cnt do
@@ -352,27 +365,21 @@ local function prepare_data(schema, tuples_cnt, sources_cnt, opts)
 
     -- Fill sources.
     local sources
-    if input_type == 'table' then
+    local fetch_source
+    if use_fetch_source then
+        sources, fetch_source = gen_fetch_source(schema, tuples, opts)
+    elseif input_type == 'table' then
         -- Imitate netbox's select w/o {buffer = ...}.
-        if use_fetch_source then
-            sources, fetch_source = gen_fetch_source(schema, tuples, opts)
-        else
-            sources = tuples
-        end
+        sources = tuples
     elseif input_type == 'buffer' then
         -- Imitate netbox's select with {buffer = ...}.
-        if use_fetch_source then
-            sources, fetch_source = gen_fetch_source(schema, tuples, opts)
-        else
-            sources = {}
-            for i = 1, sources_cnt do
-                sources[i] = buffer.ibuf()
-                msgpackffi.internal.encode_r(sources[i], tuples[i], 0)
-            end
+        sources = {}
+        for i = 1, sources_cnt do
+            sources[i] = buffer.ibuf()
+            msgpackffi.internal.encode_r(sources[i], tuples[i], 0)
         end
     elseif input_type == 'iterator' then
         -- Lua iterator.
-        assert(not use_fetch_source)
         sources = {}
         for i = 1, sources_cnt do
             sources[i] = {
@@ -488,9 +495,6 @@ local function run_case(test, schema, opts)
     if input_type == 'buffer' and not use_table_as_tuple then
         return
     end
-    if input_type == 'iterator' and use_fetch_source then
-        return
-    end
 
     test:test(case_name, function(test)
         test:plan(6)
@@ -508,7 +512,7 @@ local function run_case(test, schema, opts)
 end
 
 local test = tap.test('merger')
-test:plan(#bad_merger_methods_calls + #schemas * 48)
+test:plan(#bad_merger_methods_calls + #schemas * 60)
 
 -- For collations.
 box.cfg{}
