@@ -36,19 +36,23 @@ docker_%:
 	cd test && suites=`ls -1 */suite.ini | sed 's#/.*##g'` ; cd .. ; \
 	failed=0 ; \
 	for suite in $$suites ; do \
-		echo SUITE=$$suite ; \
-		docker run \
-			--rm=true --tty=true \
-			--volume "${PWD}:/tarantool" \
-			--volume "${HOME}/.cache:/cache" \
-			--workdir /tarantool \
-			-e XDG_CACHE_HOME=/cache \
-			-e CCACHE_DIR=/cache/ccache \
-			-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
-			-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
-			-e SUITE=$$suite \
-			${DOCKER_IMAGE}_tmp \
-			make -f .travis.mk $(subst docker_,run_,$@) ; \
+		tests=`cd test/$$suite && ls -1 *.lua | sed 's#.test.lua##g'` ; \
+		for test in $$tests ; do \
+			TEST=$$suite/$$test.test ; \
+			echo TEST=$$TEST ; \
+			docker run \
+				--rm=true --tty=true \
+				--volume "${PWD}:/tarantool" \
+				--volume "${HOME}/.cache:/cache" \
+				--workdir /tarantool \
+				-e XDG_CACHE_HOME=/cache \
+				-e CCACHE_DIR=/cache/ccache \
+				-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
+				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
+				-e TEST=$$TEST \
+				${DOCKER_IMAGE}_tmp \
+				make -f .travis.mk $(subst docker_,run_,$@) ; \
+		done ; \
 	done
 	docker rmi -f ${DOCKER_IMAGE}_tmp
 
@@ -66,7 +70,7 @@ test_ubuntu: deps_ubuntu
 	make -j8
 
 run_test_ubuntu:
-	cd test && /usr/bin/python test-run.py -j 1 --force --suite ${SUITE} 
+	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} 
 
 deps_osx:
 	brew update
@@ -95,7 +99,7 @@ coverage_ubuntu: deps_ubuntu
 
 run_coverage_ubuntu: deps_ubuntu
 	# Enable --long tests for coverage
-	cd test && /usr/bin/python test-run.py -j 1 --force --long --suite ${SUITE}
+	cd test && /usr/bin/python test-run.py -j 1 --force --long ${TEST}
 	lcov --compat-libtool --directory src/ --capture --output-file coverage.info.tmp
 	lcov --compat-libtool --remove coverage.info.tmp 'tests/*' 'third_party/*' '/usr/*' \
 		--output-file coverage.info
