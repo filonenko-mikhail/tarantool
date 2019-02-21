@@ -819,7 +819,7 @@ luaL_merger_source_iterator_fetch(struct merger_source_iterator *source,
 	}
 	/* Set the new iterator as the source. */
 	if (source->it != NULL)
-		luaL_iterator_delete(L, source->it);
+		luaL_iterator_delete(source->it);
 	source->it = luaL_iterator_new(L, 0);
 	lua_pop(L, 3);
 	if (source->it == NULL)
@@ -840,7 +840,7 @@ luaL_merger_source_iterator_delete(struct merger_source *base,
 	luaL_unref(L, LUA_REGISTRYINDEX, source->fetch_ref);
 
 	if (source->it != NULL)
-		luaL_iterator_delete(L, source->it);
+		luaL_iterator_delete(source->it);
 
 	if (base->tuple != NULL)
 		box_tuple_unref(base->tuple);
