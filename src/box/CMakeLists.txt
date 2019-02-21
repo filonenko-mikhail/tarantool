@@ -12,6 +12,7 @@ lua_source(lua_sources lua/net_box.lua)
 lua_source(lua_sources lua/upgrade.lua)
 lua_source(lua_sources lua/console.lua)
 lua_source(lua_sources lua/xlog.lua)
+lua_source(lua_sources lua/merger.lua)
 set(bin_sources)
 bin_source(bin_sources bootstrap.snap bootstrap.h)
 

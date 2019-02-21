@@ -18,8 +18,7 @@ local function merger_usage(param)
         'merger_context, ' ..
         '{source, source, ...}[, {' ..
         'reverse = <boolean> or <nil>, ' ..
-        'buffer = <cdata<struct ibuf>> or <nil>, ' ..
-        'fetch_source = <function> or <nil>}])'
+        'buffer = <cdata<struct ibuf>> or <nil>}])'
     if not param then
         return ('Bad params, use: %s'):format(msg)
     else
@@ -41,6 +40,33 @@ local function truncated_msgpack_buffer(data, trunc)
     return buf
 end
 
+local function truncated_msgpack_source(data, trunc)
+    local buf = truncated_msgpack_buffer(data, trunc)
+    return merger.new_source_frombuffer(buf)
+end
+
+local bad_source_new_calls = {
+    {
+        'Bad fetch function',
+        funcs = {'new_buffer_source', 'new_table_source',
+                 'new_iterator_source'},
+        params = {1},
+        exp_err = '^Usage: merger%.[a-z_]+%(<function>%)$',
+    },
+    {
+        'Bad chunk type',
+        funcs = {'new_source_frombuffer', 'new_source_fromtable'},
+        params = {1},
+        exp_err = '^Usage: merger%.[a-z_]+%(<.+>%)$',
+    },
+    {
+        'Bad buffer',
+        funcs = {'new_source_frombuffer'},
+        params = {ffi.new('char *')},
+        exp_err = '^Usage: merger%.[a-z_]+%(<cdata<struct ibuf>>%)$',
+    },
+}
+
 local bad_merger_methods_calls = {
     {
         'Bad opts',
@@ -55,20 +81,8 @@ local bad_merger_methods_calls = {
         exp_err = merger_usage('reverse'),
     },
     {
-        'Bad source',
-        sources = {1},
-        opts = nil,
-        exp_err = 'Unknown source type at index 1',
-    },
-    {
-        'Bad cdata source',
-        sources = {ffi.new('char *')},
-        opts = nil,
-        exp_err = 'Unknown source type at index 1',
-    },
-    {
         'Wrong source of table type',
-        sources = {{1}},
+        sources = {merger.new_source_fromtable({1})},
         opts = nil,
         exp_err = 'A tuple or a table expected, got number',
     },
@@ -84,7 +98,7 @@ local bad_merger_methods_calls = {
         -- Remove the last tuple from msgpack data, but keep old
         -- tuples array size.
         sources = {
-            truncated_msgpack_buffer({{''}, {''}, {''}}, 2),
+            truncated_msgpack_source({{''}, {''}, {''}}, 2),
         },
         opts = {},
         funcs = {'select'},
@@ -94,17 +108,11 @@ local bad_merger_methods_calls = {
         'Bad msgpack source: wrong length of a tuple',
         -- Remove half of the last tuple, but keep old tuple size.
         sources = {
-            truncated_msgpack_buffer({{''}, {''}, {''}}, 1),
+            truncated_msgpack_source({{''}, {''}, {''}}, 1),
         },
         opts = {},
         funcs = {'select'},
         exp_err = 'Unexpected msgpack buffer end',
-    },
-    {
-        'Bad fetch_source type',
-        sources = {},
-        opts = {fetch_source = 1},
-        exp_err = merger_usage('fetch_source'),
     },
 }
 
@@ -266,50 +274,64 @@ local function lowercase_unicode_ci_fields(tuples, parts)
     end
 end
 
+local function fetch_source_new(idx, schema, tuples, input_type)
+    return setmetatable({
+        schema = schema,
+        tuples = tuples,
+        input_type = input_type,
+        idx = idx,
+        last_pos = 0,
+    }, {
+        __call = function(self, last_tuple, processed)
+            local schema = self.schema
+            local tuples = self.tuples
+            local input_type = self.input_type
+            local idx = self.idx
+            local last_pos = self.last_pos
+            local exp_last_tuple = tuples[idx][last_pos]
+            assert((last_tuple == nil and exp_last_tuple == nil) or
+                tuple_comparator(last_tuple, exp_last_tuple,
+                schema.parts) == 0)
+            assert(last_pos == processed)
+            local data = fun.iter(tuples[idx]):drop(last_pos):take(
+                FETCH_BLOCK_SIZE):totable()
+            assert(#data > 0 or processed == #tuples[idx])
+            self.last_pos = last_pos + #data
+            if input_type == 'table' then
+                return data
+            elseif input_type == 'buffer' then
+                local buf = buffer.ibuf()
+                msgpackffi.internal.encode_r(buf, data, 0)
+                return buf
+            elseif input_type == 'iterator' then
+                return fun.iter(data)
+            else
+                assert(false)
+            end
+        end
+    })
+end
+
 local function gen_fetch_source(schema, tuples, opts)
     local opts = opts or {}
     local input_type = opts.input_type
     local sources_cnt = #tuples
 
     local sources = {}
-    local last_positions = {}
     for i = 1, sources_cnt do
         if input_type == 'buffer' then
-            sources[i] = buffer.ibuf()
+            sources[i] = merger.new_buffer_source(fetch_source_new(i, schema,
+                tuples, input_type))
         elseif input_type == 'table' then
-            sources[i] = {}
+            sources[i] = merger.new_table_source(fetch_source_new(i, schema,
+                tuples, input_type))
         elseif input_type == 'iterator' then
-            sources[i] = {fun.iter({})}
-        end
-        last_positions[i] = 0
-    end
-
-    local fetch_source = function(source, last_tuple, processed)
-        local idx = source.idx
-        local last_pos = last_positions[idx]
-        local exp_last_tuple = tuples[idx][last_pos]
-        assert((last_tuple == nil and exp_last_tuple == nil) or
-            tuple_comparator(last_tuple, exp_last_tuple,
-            schema.parts) == 0)
-        assert(last_pos == processed)
-        local data = fun.iter(tuples[idx]):drop(last_pos):take(
-            FETCH_BLOCK_SIZE):totable()
-        assert(#data > 0 or processed == #tuples[idx])
-        last_positions[idx] = last_pos + #data
-        if input_type == 'table' then
-            return data
-        elseif input_type == 'buffer' then
-            local buf = buffer.ibuf()
-            msgpackffi.internal.encode_r(buf, data, 0)
-            return buf
-        elseif input_type == 'iterator' then
-            return fun.iter(data)
-        else
-            assert(false)
+            sources[i] = merger.new_iterator_source(fetch_source_new(i, schema,
+                tuples, input_type))
         end
     end
 
-    return sources, fetch_source
+    return sources
 end
 
 local function prepare_data(schema, tuples_cnt, sources_cnt, opts)
@@ -351,35 +373,38 @@ local function prepare_data(schema, tuples_cnt, sources_cnt, opts)
 
     -- Fill sources.
     local sources
-    local fetch_source
     if use_fetch_source then
-        sources, fetch_source = gen_fetch_source(schema, tuples, opts)
+        sources = gen_fetch_source(schema, tuples, opts)
     elseif input_type == 'table' then
         -- Imitate netbox's select w/o {buffer = ...}.
-        sources = tuples
+        sources = {}
+        for i = 1, sources_cnt do
+            sources[i] = merger.new_source_fromtable(tuples[i])
+        end
     elseif input_type == 'buffer' then
         -- Imitate netbox's select with {buffer = ...}.
         sources = {}
         for i = 1, sources_cnt do
-            sources[i] = buffer.ibuf()
-            msgpackffi.internal.encode_r(sources[i], tuples[i], 0)
+            local buf = buffer.ibuf()
+            sources[i] = merger.new_source_frombuffer(buf)
+            msgpackffi.internal.encode_r(buf, tuples[i], 0)
         end
     elseif input_type == 'iterator' then
         -- Lua iterator.
         sources = {}
         for i = 1, sources_cnt do
-            sources[i] = {
+            sources[i] = merger.new_source_fromiterator(
                 -- gen (next)
                 next,
                 -- param (tuples)
                 tuples[i],
                 -- state (idx)
                 nil
-            }
+            )
         end
     end
 
-    return sources, exp_result, fetch_source
+    return sources, exp_result
 end
 
 local function test_case_opts_str(opts)
@@ -418,14 +443,13 @@ local function run_merger(test, schema, tuples_cnt, sources_cnt, opts)
     local opts = opts or {}
 
     -- Prepare data.
-    local sources, exp_result, fetch_source =
-        prepare_data(schema, tuples_cnt, sources_cnt, opts)
+    local sources, exp_result = prepare_data(schema, tuples_cnt, sources_cnt,
+                                             opts)
 
     -- Create a merger instance and fill options.
     local ctx = merger.context.new(key_def.new(schema.parts))
     local merger_opts = {
         reverse = opts.reverse,
-        fetch_source = fetch_source,
     }
     if opts.output_type == 'buffer' then
         merger_opts.buffer = buffer.ibuf()
@@ -498,10 +522,21 @@ local function run_case(test, schema, opts)
 end
 
 local test = tap.test('merger')
-test:plan(#bad_merger_methods_calls + #schemas * 60)
+test:plan(#bad_source_new_calls + #bad_merger_methods_calls + #schemas * 60)
 
 -- For collations.
 box.cfg{}
+
+for _, case in ipairs(bad_source_new_calls) do
+    test:test(case[1], function(test)
+        local funcs = case.funcs
+        test:plan(#funcs)
+        for _, func in ipairs(funcs) do
+            local ok, err = pcall(merger[func], unpack(case.params))
+            test:ok(ok == false and err:match(case.exp_err), func)
+        end
+    end)
+end
 
 -- Create the instance to use in testing merger's methods below.
 local ctx = merger.context.new(key_def.new({{

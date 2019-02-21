@@ -70,7 +70,8 @@ extern char session_lua[],
 	feedback_daemon_lua[],
 	net_box_lua[],
 	upgrade_lua[],
-	console_lua[];
+	console_lua[],
+	merger_lua[];
 
 static const char *lua_sources[] = {
 	"box/session", session_lua,
@@ -82,6 +83,7 @@ static const char *lua_sources[] = {
 	"box/console", console_lua,
 	"box/load_cfg", load_cfg_lua,
 	"box/xlog", xlog_lua,
+	"box/merger", merger_lua,
 	NULL
 };
 
