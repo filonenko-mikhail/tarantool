@@ -32,7 +32,25 @@ docker_%:
 		make -f .travis.mk $(subst docker_,,$@)
 	docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}_tmp
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
-	$(subst docker_,run_,$@)
+	docker rm -f built_container_${TRAVIS_JOB_ID}
+	cd test && suites=`ls -1 */suite.ini | sed 's#/.*##g'` ; cd .. ; \
+	failed=0 ; \
+	for suite in $$suites ; do \
+		echo SUITE=$$suite ; \
+		docker run \
+			--rm=true --tty=true \
+			--volume "${PWD}:/tarantool" \
+			--volume "${HOME}/.cache:/cache" \
+			--workdir /tarantool \
+			-e XDG_CACHE_HOME=/cache \
+			-e CCACHE_DIR=/cache/ccache \
+			-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
+			-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
+			-e SUITE=$$suite \
+			${DOCKER_IMAGE}_tmp \
+			make -f .travis.mk $(subst docker_,run_,$@) ; \
+	done
+	docker rmi -f ${DOCKER_IMAGE}_tmp
 
 deps_ubuntu:
 	sudo apt-get update && sudo apt-get install -y -f \
@@ -48,19 +66,7 @@ test_ubuntu: deps_ubuntu
 	make -j8
 
 run_test_ubuntu:
-        for suite in `cd test ; ls -1  */suite.ini | sed 's#/.*##g'` ; do \
-                docker run \
-                        --rm=true --tty=true \
-                        --volume "${PWD}:/tarantool" \
-                        --volume "${HOME}/.cache:/cache" \
-                        --workdir /tarantool \
-                        -e XDG_CACHE_HOME=/cache \
-                        -e CCACHE_DIR=/cache/ccache \
-                        -e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
-                        -e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
-                        ${DOCKER_IMAGE}_tmp \
-                        cd test && /usr/bin/python test-run.py -j 1 --suite $suite ; \
-	done
+	cd test && /usr/bin/python test-run.py -j 1 --force --suite ${SUITE} 
 
 deps_osx:
 	brew update
@@ -86,8 +92,10 @@ test_osx: deps_osx
 coverage_ubuntu: deps_ubuntu
 	cmake . -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCOV=ON
 	make -j8
+
+run_coverage_ubuntu: deps_ubuntu
 	# Enable --long tests for coverage
-	cd test && /usr/bin/python test-run.py -j 1 --long
+	cd test && /usr/bin/python test-run.py -j 1 --force --long --suite ${SUITE}
 	lcov --compat-libtool --directory src/ --capture --output-file coverage.info.tmp
 	lcov --compat-libtool --remove coverage.info.tmp 'tests/*' 'third_party/*' '/usr/*' \
 		--output-file coverage.info
