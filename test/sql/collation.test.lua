@@ -172,3 +172,14 @@ box.sql.execute("SELECT a FROM t4b ORDER BY a || b")
 
 box.space.T4A:drop()
 box.space.T4B:drop()
+
+-- gh-3932: make sure set build-in functions derive collation
+-- from their arguments.
+--
+box.sql.execute("CREATE TABLE jj (s1 INT PRIMARY KEY, s2 CHAR(3) COLLATE \"unicode_ci\");")
+box.sql.execute("INSERT INTO jj VALUES (1,'A'), (2,'a')")
+box.sql.execute("SELECT DISTINCT trim(s2) FROM jj;")
+box.sql.execute("INSERT INTO jj VALUES (3, 'aS'), (4, 'AS');")
+box.sql.execute("SELECT DISTINCT replace(s2, 'S', 's') FROM jj;")
+box.sql.execute("SELECT DISTINCT substr(s2, 1, 1) FROM jj;")
+box.space.JJ:drop()
