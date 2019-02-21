@@ -223,7 +223,7 @@ test:do_catchsql_test(
         ALTER TABLE child ADD CONSTRAINT fk FOREIGN KEY REFERENCES child(id);
     ]], {
         -- <alter2-4.1>
-        1, "near \"REFERENCES\": syntax error"
+        1, "Unrecognized syntax near 'REFERENCES'"
         -- </alter2-4.1>
     })
 
@@ -233,7 +233,7 @@ test:do_catchsql_test(
         ALTER TABLE child ADD CONSTRAINT fk () FOREIGN KEY REFERENCES child(id);
     ]], {
         -- <alter2-4.1>
-        1, "near \"(\": syntax error"
+        1, "Unrecognized syntax near '('"
         -- </alter2-4.2>
     })
 

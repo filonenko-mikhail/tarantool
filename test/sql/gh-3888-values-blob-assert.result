@@ -16,20 +16,20 @@ box.sql.execute('pragma sql_default_engine=\''..engine..'\'')
 -- check 'VALUES' against typedef keywords (should fail)
 box.sql.execute('VALUES(blob)')
 ---
-- error: 'near "blob": syntax error'
+- error: Unrecognized syntax near 'blob'
 ...
 box.sql.execute('VALUES(float)')
 ---
-- error: 'near "float": syntax error'
+- error: Unrecognized syntax near 'float'
 ...
 -- check 'SELECT' against typedef keywords (should fail)
 box.sql.execute('SELECT blob')
 ---
-- error: 'near "blob": syntax error'
+- error: Unrecognized syntax near 'blob'
 ...
 box.sql.execute('SELECT float')
 ---
-- error: 'near "float": syntax error'
+- error: Unrecognized syntax near 'float'
 ...
 -- check 'VALUES' against ID (should fail)
 box.sql.execute('VALUES(TheColumnName)')

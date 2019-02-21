@@ -51,7 +51,7 @@ test:do_catchsql_test(
 	[[
 		pragma sql_default_engine 'memtx';
 	]], {
-	1, 'near \"\'memtx\'\": syntax error'
+	1, "Unrecognized syntax near ''memtx''"
 })
 
 test:do_catchsql_test(
@@ -59,7 +59,7 @@ test:do_catchsql_test(
 	[[
 		pragma sql_default_engine 1;
 	]], {
-	1, 'near \"1\": syntax error'
+	1, "Unrecognized syntax near '1'"
 })
 
 test:finish_test()
