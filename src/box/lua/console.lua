@@ -344,8 +344,9 @@ end
 -- Read command from connected client console.listen()
 --
 local function client_read(self)
-    local delim = self.delimiter .. "\n"
-    local buf = self.client:read(delim)
+    local delim_lf = self.delimiter .. "\n"
+    local delim_cr = self.delimiter .. "\r"
+    local buf = self.client:read({delimiter = {delim_lf, delim_cr}})
     if buf == nil then
         return nil
     elseif buf == "" then
@@ -355,7 +356,7 @@ local function client_read(self)
         return nil
     end
     -- remove trailing delimiter
-    return buf:sub(1, -#delim-1)
+    return buf:sub(1, -#delim_lf-1)
 end
 
 --
