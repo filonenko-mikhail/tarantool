@@ -947,7 +947,6 @@ parse_merger_source(struct lua_State *L, int idx, int ordinal,
 	if (base->tuple != NULL) {
 		rc = merger_heap_insert(&state->heap, &base->hnode);
 		if (rc) {
-			base->vtab->delete(base, L);
 			diag_set(OutOfMemory, heap_next_grow_size(&state->heap),
 				 "malloc", "merger heap");
 			luaT_pusherror(L, diag_last_error(diag_get()));
