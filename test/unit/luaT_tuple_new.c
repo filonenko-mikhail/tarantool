@@ -9,7 +9,7 @@
 #include "box/box.h"          /* box_init() */
 #include "box/tuple.h"        /* box_tuple_format_default() */
 #include "lua/msgpack.h"      /* luaopen_msgpack() */
-#include "box/lua/tuple.h"    /* luaL_iterator_*() */
+#include "box/lua/tuple.h"    /* luaT_tuple_new() */
 #include "diag.h"             /* struct error, diag_*() */
 #include "exception.h"        /* type_IllegalParams */
 
