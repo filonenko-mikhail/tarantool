@@ -839,7 +839,8 @@ luaL_merger_source_iterator_delete(struct merger_source *base,
 	assert(source->fetch_ref > 0);
 	luaL_unref(L, LUA_REGISTRYINDEX, source->fetch_ref);
 
-	luaL_iterator_delete(L, source->it);
+	if (source->it != NULL)
+		luaL_iterator_delete(L, source->it);
 
 	if (base->tuple != NULL)
 		box_tuple_unref(base->tuple);
