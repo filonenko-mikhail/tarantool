@@ -1412,8 +1412,7 @@ vy_run_iterator_open(struct vy_run_iterator *itr,
 		     struct vy_slice *slice, enum iterator_type iterator_type,
 		     const struct tuple *key, const struct vy_read_view **rv,
 		     struct key_def *cmp_def, struct key_def *key_def,
-		     struct tuple_format *format,
-		     bool is_primary)
+		     struct tuple_format *format, bool is_primary)
 {
 	itr->stat = stat;
 	itr->cmp_def = cmp_def;
@@ -2149,7 +2148,8 @@ vy_run_writer_start_page(struct vy_run_writer *writer,
 	if (run->info.page_count >= writer->page_info_capacity &&
 	    vy_run_alloc_page_info(run, &writer->page_info_capacity) != 0)
 		return -1;
-	const char *key = tuple_extract_key(first_stmt, writer->cmp_def, NULL);
+	const char *key = vy_stmt_is_key(first_stmt) ? tuple_data(first_stmt) :
+			  tuple_extract_key(first_stmt, writer->cmp_def, NULL);
 	if (key == NULL)
 		return -1;
 	if (run->info.page_count == 0) {
@@ -2165,6 +2165,27 @@ vy_run_writer_start_page(struct vy_run_writer *writer,
 	return 0;
 }
 
+static int
+vy_tuple_bloom_add(struct tuple_bloom_builder *bloom, struct key_def *key_def,
+		   struct tuple *stmt, struct tuple *last_stmt)
+{
+	if (vy_stmt_is_key(stmt)) {
+		assert(last_stmt == NULL || vy_stmt_is_key(last_stmt));
+		const char *key = tuple_data(stmt);
+		uint32_t hashed_parts = last_stmt == NULL ? 0 :
+			key_common_parts(key, tuple_data(last_stmt), key_def);
+		uint32_t part_count = mp_decode_array(&key);
+		return tuple_bloom_builder_add_key(bloom, key, part_count,
+						   key_def, hashed_parts);
+	} else {
+		assert(last_stmt == NULL || !vy_stmt_is_key(last_stmt));
+		uint32_t hashed_parts = last_stmt == NULL ? 0 :
+			tuple_common_key_parts(stmt, last_stmt, key_def);
+		return tuple_bloom_builder_add(bloom, stmt, key_def,
+					       hashed_parts);
+	}
+}
+
 /**
  * Write @a stmt into a current page.
  * @param writer Run writer.
@@ -2176,13 +2197,10 @@ vy_run_writer_start_page(struct vy_run_writer *writer,
 static int
 vy_run_writer_write_to_page(struct vy_run_writer *writer, struct tuple *stmt)
 {
-	if (writer->bloom != NULL) {
-		uint32_t hashed_parts = writer->last_stmt == NULL ? 0 :
-			tuple_common_key_parts(stmt, writer->last_stmt,
-					       writer->key_def);
-		tuple_bloom_builder_add(writer->bloom, stmt,
-					writer->key_def, hashed_parts);
-	}
+	if (writer->bloom != NULL &&
+	    vy_tuple_bloom_add(writer->bloom, writer->key_def, stmt,
+			       writer->last_stmt) != 0)
+		return -1;
 	if (writer->last_stmt != NULL)
 		vy_stmt_unref_if_possible(writer->last_stmt);
 	writer->last_stmt = stmt;
@@ -2302,7 +2320,9 @@ vy_run_writer_commit(struct vy_run_writer *writer)
 	}
 
 	assert(writer->last_stmt != NULL);
-	const char *key = tuple_extract_key(writer->last_stmt,
+	const char *key = vy_stmt_is_key(writer->last_stmt) ?
+		          tuple_data(writer->last_stmt) :
+			  tuple_extract_key(writer->last_stmt,
 					    writer->cmp_def, NULL);
 	if (key == NULL)
 		goto out;
@@ -2370,6 +2390,7 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 	uint32_t page_info_capacity = 0;
 
 	const char *key = NULL;
+	char *page_min_key = NULL;
 	int64_t max_lsn = 0;
 	int64_t min_lsn = INT64_MAX;
 	struct tuple *prev_tuple = NULL;
@@ -2390,7 +2411,6 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 		if (run->info.page_count == page_info_capacity &&
 		    vy_run_alloc_page_info(run, &page_info_capacity) != 0)
 			goto close_err;
-		const char *page_min_key = NULL;
 		uint32_t page_row_count = 0;
 		uint64_t page_row_index_offset = 0;
 		uint64_t row_offset = xlog_cursor_tx_pos(&cursor);
@@ -2407,14 +2427,14 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 							     format, iid == 0);
 			if (tuple == NULL)
 				goto close_err;
-			if (bloom_builder != NULL) {
-				uint32_t hashed_parts = prev_tuple == NULL ? 0 :
-					tuple_common_key_parts(prev_tuple,
-							       tuple, key_def);
-				tuple_bloom_builder_add(bloom_builder, tuple,
-							key_def, hashed_parts);
+			if (bloom_builder != NULL &&
+			    vy_tuple_bloom_add(bloom_builder, key_def,
+					       tuple, prev_tuple) != 0) {
+				tuple_unref(tuple);
+				goto close_err;
 			}
-			key = tuple_extract_key(tuple, cmp_def, NULL);
+			key = vy_stmt_is_key(tuple) ? tuple_data(tuple) :
+			      tuple_extract_key(tuple, cmp_def, NULL);
 			if (prev_tuple != NULL)
 				tuple_unref(prev_tuple);
 			prev_tuple = tuple;
@@ -2425,8 +2445,11 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 				if (run->info.min_key == NULL)
 					goto close_err;
 			}
-			if (page_min_key == NULL)
-				page_min_key = key;
+			if (page_min_key == NULL) {
+				page_min_key = key_dup(key);
+				if (page_min_key == NULL)
+					goto close_err;
+			}
 			if (xrow.lsn > max_lsn)
 				max_lsn = xrow.lsn;
 			if (xrow.lsn < min_lsn)
@@ -2443,17 +2466,18 @@ vy_run_rebuild_index(struct vy_run *run, const char *dir,
 		info->row_index_offset = page_row_index_offset;
 		++run->info.page_count;
 		vy_run_acct_page(run, info);
-	}
-
-	if (prev_tuple != NULL) {
-		tuple_unref(prev_tuple);
-		prev_tuple = NULL;
+		free(page_min_key);
+		page_min_key = NULL;
 	}
 
 	if (key != NULL) {
 		run->info.max_key = key_dup(key);
 		if (run->info.max_key == NULL)
 			goto close_err;
+	}
+	if (prev_tuple != NULL) {
+		tuple_unref(prev_tuple);
+		prev_tuple = NULL;
 	}
 	run->info.max_lsn = max_lsn;
 	run->info.min_lsn = min_lsn;
@@ -2487,6 +2511,8 @@ close_err:
 	region_truncate(region, mem_used);
 	if (prev_tuple != NULL)
 		tuple_unref(prev_tuple);
+	if (page_min_key != NULL)
+		free(page_min_key);
 	if (bloom_builder != NULL)
 		tuple_bloom_builder_delete(bloom_builder);
 	if (xlog_cursor_is_open(&cursor))

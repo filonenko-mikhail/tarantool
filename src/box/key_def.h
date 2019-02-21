@@ -375,6 +375,20 @@ key_def_contains(const struct key_def *first, const struct key_def *second);
 struct key_def *
 key_def_merge(const struct key_def *first, const struct key_def *second);
 
+/**
+ * Create a key definition suitable for extracting primary key
+ * parts from an extended secondary key.
+ * @param cmp_def   Extended secondary key definition
+ *                  (must include primary key parts).
+ * @param pk_def    Primary key definition.
+ * @param region    Region used for temporary allocations.
+ * @retval not NULL Pointer to the extracted key definition.
+ * @retval NULL     Memory allocation error.
+ */
+struct key_def *
+key_def_extract(const struct key_def *cmp_def, const struct key_def *pk_def,
+		struct region *region);
+
 /*
  * Check that parts of the key match with the key definition.
  * @param key_def Key definition.
@@ -521,6 +535,16 @@ tuple_extract_key_raw(const char *data, const char *data_end,
 uint32_t
 tuple_common_key_parts(const struct tuple *tuple_a, const struct tuple *tuple_b,
 		       struct key_def *key_def);
+
+/**
+ * Return the length of the longest common prefix of two keys.
+ * @param key_a first key
+ * @param key_b second key
+ * @param key_def key defintion
+ * @return number of key parts the two keys have in common
+ */
+uint32_t
+key_common_parts(const char *key_a, const char *key_b, struct key_def *key_def);
 
 /**
  * Compare keys using the key definition.

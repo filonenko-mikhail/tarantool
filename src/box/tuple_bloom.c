@@ -70,6 +70,25 @@ tuple_bloom_builder_delete(struct tuple_bloom_builder *builder)
 	free(builder);
 }
 
+static int
+tuple_hash_array_add(struct tuple_hash_array *hash_arr, uint32_t hash)
+{
+	if (hash_arr->count >= hash_arr->capacity) {
+		uint32_t capacity = MAX(hash_arr->capacity * 2, 1024U);
+		uint32_t *values = realloc(hash_arr->values,
+					   capacity * sizeof(*values));
+		if (values == NULL) {
+			diag_set(OutOfMemory, capacity * sizeof(*values),
+				 "malloc", "tuple hash array");
+			return -1;
+		}
+		hash_arr->capacity = capacity;
+		hash_arr->values = values;
+	}
+	hash_arr->values[hash_arr->count++] = hash;
+	return 0;
+}
+
 int
 tuple_bloom_builder_add(struct tuple_bloom_builder *builder,
 			const struct tuple *tuple, struct key_def *key_def,
@@ -92,21 +111,38 @@ tuple_bloom_builder_add(struct tuple_bloom_builder *builder,
 			 */
 			continue;
 		}
-		struct tuple_hash_array *hash_arr = &builder->parts[i];
-		if (hash_arr->count >= hash_arr->capacity) {
-			uint32_t capacity = MAX(hash_arr->capacity * 2, 1024U);
-			uint32_t *values = realloc(hash_arr->values,
-						   capacity * sizeof(*values));
-			if (values == NULL) {
-				diag_set(OutOfMemory, capacity * sizeof(*values),
-					 "malloc", "tuple hash array");
-				return -1;
-			}
-			hash_arr->capacity = capacity;
-			hash_arr->values = values;
+		tuple_hash_array_add(&builder->parts[i],
+				     PMurHash32_Result(h, carry, total_size));
+	}
+	return 0;
+}
+
+int
+tuple_bloom_builder_add_key(struct tuple_bloom_builder *builder,
+			    const char *key, uint32_t part_count,
+			    struct key_def *key_def, uint32_t hashed_parts)
+{
+	(void)part_count;
+	assert(part_count >= key_def->part_count);
+	assert(builder->part_count == key_def->part_count);
+
+	uint32_t h = HASH_SEED;
+	uint32_t carry = 0;
+	uint32_t total_size = 0;
+
+	for (uint32_t i = 0; i < key_def->part_count; i++) {
+		total_size += tuple_hash_field(&h, &carry, &key,
+					       key_def->parts[i].coll);
+		if (i < hashed_parts) {
+			/*
+			 * This part is already in the bloom, proceed
+			 * to the next one. Note, we can't skip to
+			 * hashed_parts, as we need to compute the hash.
+			 */
+			continue;
 		}
-		uint32_t hash = PMurHash32_Result(h, carry, total_size);
-		hash_arr->values[hash_arr->count++] = hash;
+		tuple_hash_array_add(&builder->parts[i],
+				     PMurHash32_Result(h, carry, total_size));
 	}
 	return 0;
 }

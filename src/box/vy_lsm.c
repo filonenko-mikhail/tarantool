@@ -118,10 +118,9 @@ vy_lsm_mem_tree_size(struct vy_lsm *lsm)
 }
 
 struct vy_lsm *
-vy_lsm_new(struct vy_lsm_env *lsm_env, struct vy_stmt_env *stmt_env,
-	   struct vy_cache_env *cache_env, struct vy_mem_env *mem_env,
-	   struct index_def *index_def, struct tuple_format *format,
-	   struct vy_lsm *pk, uint32_t group_id)
+vy_lsm_new(struct vy_lsm_env *lsm_env, struct vy_cache_env *cache_env,
+	   struct vy_mem_env *mem_env, struct index_def *index_def,
+	   struct tuple_format *format, struct vy_lsm *pk, uint32_t group_id)
 {
 	static int64_t run_buckets[] = {
 		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100,
@@ -138,16 +137,14 @@ vy_lsm_new(struct vy_lsm_env *lsm_env, struct vy_stmt_env *stmt_env,
 	}
 	lsm->env = lsm_env;
 
-	struct key_def *key_def = key_def_dup(index_def->key_def);
-	if (key_def == NULL)
+	lsm->key_def = key_def_dup(index_def->key_def);
+	if (lsm->key_def == NULL)
 		goto fail_key_def;
 
-	struct key_def *cmp_def = key_def_dup(index_def->cmp_def);
-	if (cmp_def == NULL)
+	lsm->cmp_def = key_def_dup(index_def->cmp_def);
+	if (lsm->cmp_def == NULL)
 		goto fail_cmp_def;
 
-	lsm->cmp_def = cmp_def;
-	lsm->key_def = key_def;
 	if (index_def->iid == 0) {
 		/*
 		 * Disk tuples can be returned to an user from a
@@ -156,10 +153,12 @@ vy_lsm_new(struct vy_lsm_env *lsm_env, struct vy_stmt_env *stmt_env,
 		 */
 		lsm->disk_format = format;
 	} else {
-		lsm->disk_format = vy_stmt_format_new(stmt_env, &cmp_def, 1,
-						      NULL, 0, 0, NULL);
-		if (lsm->disk_format == NULL)
-			goto fail_format;
+		lsm->disk_format = lsm_env->key_format;
+
+		lsm->pk_extractor = key_def_extract(lsm->cmp_def, pk->key_def,
+						    &fiber()->gc);
+		if (lsm->pk_extractor == NULL)
+			goto fail_pk_extractor;
 	}
 	tuple_format_ref(lsm->disk_format);
 
@@ -170,7 +169,7 @@ vy_lsm_new(struct vy_lsm_env *lsm_env, struct vy_stmt_env *stmt_env,
 	if (lsm->run_hist == NULL)
 		goto fail_run_hist;
 
-	lsm->mem = vy_mem_new(mem_env, cmp_def, format,
+	lsm->mem = vy_mem_new(mem_env, lsm->cmp_def, format,
 			      *lsm->env->p_generation,
 			      space_cache_version);
 	if (lsm->mem == NULL)
@@ -180,7 +179,8 @@ vy_lsm_new(struct vy_lsm_env *lsm_env, struct vy_stmt_env *stmt_env,
 	lsm->refs = 1;
 	lsm->dump_lsn = -1;
 	lsm->commit_lsn = -1;
-	vy_cache_create(&lsm->cache, cache_env, cmp_def, index_def->iid == 0);
+	vy_cache_create(&lsm->cache, cache_env, lsm->cmp_def,
+			index_def->iid == 0);
 	rlist_create(&lsm->sealed);
 	vy_range_tree_new(&lsm->range_tree);
 	vy_range_heap_create(&lsm->range_heap);
@@ -208,10 +208,12 @@ fail_run_hist:
 	vy_lsm_stat_destroy(&lsm->stat);
 fail_stat:
 	tuple_format_unref(lsm->disk_format);
-fail_format:
-	key_def_delete(cmp_def);
+	if (lsm->pk_extractor != NULL)
+		key_def_delete(lsm->pk_extractor);
+fail_pk_extractor:
+	key_def_delete(lsm->cmp_def);
 fail_cmp_def:
-	key_def_delete(key_def);
+	key_def_delete(lsm->key_def);
 fail_key_def:
 	free(lsm);
 fail:
@@ -262,6 +264,8 @@ vy_lsm_delete(struct vy_lsm *lsm)
 	tuple_format_unref(lsm->disk_format);
 	key_def_delete(lsm->cmp_def);
 	key_def_delete(lsm->key_def);
+	if (lsm->pk_extractor != NULL)
+		key_def_delete(lsm->pk_extractor);
 	histogram_delete(lsm->run_hist);
 	vy_lsm_stat_destroy(&lsm->stat);
 	vy_cache_destroy(&lsm->cache);

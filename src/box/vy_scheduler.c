@@ -1407,7 +1407,7 @@ vy_task_dump_new(struct vy_scheduler *scheduler, struct vy_worker *worker,
 	 */
 	struct vy_stmt_stream *wi;
 	bool is_last_level = (lsm->run_count == 0);
-	wi = vy_write_iterator_new(task->cmp_def, lsm->disk_format,
+	wi = vy_write_iterator_new(task->cmp_def, lsm->mem_format,
 				   lsm->index_id == 0, is_last_level,
 				   scheduler->read_views, NULL);
 	if (wi == NULL)

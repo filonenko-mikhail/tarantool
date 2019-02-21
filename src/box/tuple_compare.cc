@@ -458,6 +458,30 @@ tuple_common_key_parts(const struct tuple *tuple_a, const struct tuple *tuple_b,
 	return i;
 }
 
+uint32_t
+key_common_parts(const char *key_a, const char *key_b, struct key_def *key_def)
+{
+	uint32_t i;
+	uint32_t part_count_a = mp_decode_array(&key_a);
+	uint32_t part_count_b = mp_decode_array(&key_b);
+	uint32_t part_count = MIN(part_count_a, part_count_b);
+	part_count = MIN(part_count, key_def->part_count);
+	for (i = 0; i < part_count; i++) {
+		struct key_part *part = &key_def->parts[i];
+		enum mp_type a_type = mp_typeof(*key_a);
+		enum mp_type b_type = mp_typeof(*key_b);
+		if (a_type == MP_NIL && b_type == MP_NIL)
+			continue;
+		if (a_type == MP_NIL || b_type == MP_NIL ||
+		    tuple_compare_field_with_hint(key_a, a_type,
+				key_b, b_type, part->type, part->coll) != 0)
+			break;
+		mp_next(&key_a);
+		mp_next(&key_b);
+	}
+	return i;
+}
+
 template<bool is_nullable, bool has_optional_parts, bool has_json_paths>
 static inline int
 tuple_compare_slowpath(const struct tuple *tuple_a, const struct tuple *tuple_b,
