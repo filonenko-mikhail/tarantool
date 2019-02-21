@@ -33,6 +33,7 @@
 
 #include <assert.h>
 #include <curl/curl.h>
+#include <trivia/util.h>
 
 #include "fiber.h"
 #include "errinj.h"
@@ -95,8 +96,7 @@ httpc_env_destroy(struct httpc_env *ctx)
 }
 
 struct httpc_request *
-httpc_request_new(struct httpc_env *env, const char *method,
-		  const char *url)
+httpc_request_new(struct httpc_env *env)
 {
 	struct httpc_request *req = mempool_alloc(&env->req_pool);
 	if (req == NULL) {
@@ -109,9 +109,19 @@ httpc_request_new(struct httpc_env *env, const char *method,
 	region_create(&req->resp_headers, &cord()->slabc);
 	region_create(&req->resp_body, &cord()->slabc);
 
-	if (curl_request_create(&req->curl_request) != 0)
+	if (curl_request_create(&req->curl_request) != 0) {
+		mempool_free(&env->req_pool, req);
 		return NULL;
+	}
 
+	ibuf_create(&req->body, &cord()->slabc, 1);
+
+	return req;
+}
+
+int
+httpc_set_url(struct httpc_request *req, const char *method, const char *url)
+{
 	if (strcmp(method, "GET") == 0) {
 		curl_easy_setopt(req->curl_request.easy, CURLOPT_HTTPGET, 1L);
 	} else if (strcmp(method, "HEAD") == 0) {
@@ -130,7 +140,7 @@ httpc_request_new(struct httpc_env *env, const char *method,
 		curl_easy_setopt(req->curl_request.easy, CURLOPT_POSTFIELDSIZE, 0);
 		curl_easy_setopt(req->curl_request.easy, CURLOPT_CUSTOMREQUEST, method);
 		if (httpc_set_header(req, "Accept: */*") < 0)
-			goto error;
+			return -1;
 	} else {
 		curl_easy_setopt(req->curl_request.easy, CURLOPT_CUSTOMREQUEST, method);
 	}
@@ -146,13 +156,7 @@ httpc_request_new(struct httpc_env *env, const char *method,
 	curl_easy_setopt(req->curl_request.easy, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(req->curl_request.easy, CURLOPT_HTTP_VERSION,
 			 CURL_HTTP_VERSION_1_1);
-
-	ibuf_create(&req->body, &cord()->slabc, 1);
-
-	return req;
-error:
-	mempool_free(&env->req_pool, req);
-	return NULL;
+	return 0;
 }
 
 void
@@ -170,6 +174,56 @@ httpc_request_delete(struct httpc_request *req)
 	mempool_free(&req->env->req_pool, req);
 }
 
+/**
+ * Update bitmask of the http request headers that httpc may set
+ * automatically. In case of reserved pattern is found in header,
+ * routine sets corresponding bit in auto_headers_mask.
+ * Returns -1 when header is reserved and it's bit is already set
+ * in auto_headers_mask; 0 otherwise,
+ * @param auto_headers_mask The bitmask of httpc-auto-managed
+ *                          headers to pointer.
+ * @param header The HTTP header string.
+ * @retval 0 When specified header is not auto-managed or when
+ *           corresponding bit was not set in auto_headers_mask.
+ * @retval -1 otherwise.
+*/
+static int
+httpc_set_header_bit(uint8_t *auto_headers_mask, const char *header)
+{
+	/*
+	 * The sequence of managed headers must be sorted to
+	 * stop scan when strcasecmp < 0. The header is expected
+	 * to be formated with "%s: %s" pattern, so direct size
+	 * verification is redundant.
+	 */
+	struct {
+		const char *name;
+		int len;
+	} managed_headers[] = {
+		{"Accept: ", sizeof("Accept: ") - 1},
+		{"Connection: ", sizeof("Connection: ") - 1},
+		{"Content-Length: ", sizeof("Content-Length: ") - 1},
+		{"Keep-Alive: ", sizeof("Keep-Alive: ") - 1},
+	};
+	int managed_headers_cnt = lengthof(managed_headers);
+	assert(managed_headers_cnt <
+	       (int)sizeof(*auto_headers_mask) * CHAR_BIT);
+	for (int i = 0; i < managed_headers_cnt; i++) {
+		int rc = strncasecmp(header, managed_headers[i].name,
+				     managed_headers[i].len);
+		if (rc > 0)
+			continue;
+		if (rc < 0)
+			return 0;
+		int8_t bit_index = 1 << i;
+		if ((*auto_headers_mask & bit_index) != 0)
+			return -1;
+		*auto_headers_mask |= bit_index;
+		return 0;
+	}
+	return 0;
+}
+
 int
 httpc_set_header(struct httpc_request *req, const char *fmt, ...)
 {
@@ -178,6 +232,10 @@ httpc_set_header(struct httpc_request *req, const char *fmt, ...)
 	const char *header = tt_vsprintf(fmt, ap);
 	va_end(ap);
 
+	if (httpc_set_header_bit(&req->auto_headers_mask, header) != 0) {
+		/* Do not add extra header to list. */
+		return 0;
+	}
 	struct curl_slist *l = curl_slist_append(req->headers, header);
 	if (l == NULL) {
 		diag_set(OutOfMemory, strlen(header), "curl", "http header");

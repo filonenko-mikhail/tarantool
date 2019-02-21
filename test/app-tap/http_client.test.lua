@@ -79,6 +79,18 @@ local function test_http_client(test, url, opts)
     test:is(r.status, 200, 'request')
 end
 
+--
+-- gh-3955: Fix httpc auto-managed headers.
+--
+local function test_http_client_headers_redefine(test, url, opts)
+    test:plan(3)
+    opts.headers={['Connection'] = 'Keep-Alive', ['Accept'] = 'text/html'}
+    local r = client.get(url, opts)
+    test:is(r.status, 200, 'simple 200')
+    test:is(r.headers["accept"], 'text/html', 'redefined Accept header')
+    test:is(r.headers["connection"], 'Keep-Alive', 'redefined Connection header')
+end
+
 local function test_cancel_and_errinj(test, url, opts)
     test:plan(3)
     local ch = fiber.channel(1)
@@ -397,9 +409,11 @@ local function test_concurrent(test, url, opts)
 end
 
 function run_tests(test, sock_family, sock_addr)
-    test:plan(9)
+    test:plan(10)
     local server, url, opts = start_server(test, sock_family, sock_addr)
     test:test("http.client", test_http_client, url, opts)
+    test:test("http.client headers redefine", test_http_client_headers_redefine,
+              url, opts)
     test:test("cancel and errinj", test_cancel_and_errinj, url .. 'long_query', opts)
     test:test("basic http post/get", test_post_and_get, url, opts)
     test:test("errors", test_errors)

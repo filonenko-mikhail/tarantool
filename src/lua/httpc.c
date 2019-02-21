@@ -145,12 +145,36 @@ luaT_httpc_request(lua_State *L)
 	if (ctx == NULL)
 		return luaL_error(L, "can't get httpc environment");
 
-	const char *method = luaL_checkstring(L, 2);
-	const char *url  = luaL_checkstring(L, 3);
-
-	struct httpc_request *req = httpc_request_new(ctx, method, url);
+	struct httpc_request *req = httpc_request_new(ctx);
 	if (req == NULL)
 		return luaT_error(L);
+
+	/*
+	 * All user-defined headers must be set before calling
+	 * other httpc module methods so that they take priority
+	 * over the headers that httpc tries to set automatically.
+	 */
+	lua_getfield(L, 5, "headers");
+	if (!lua_isnil(L, -1)) {
+		lua_pushnil(L);
+		while (lua_next(L, -2) != 0) {
+			if (httpc_set_header(req, "%s: %s",
+					     lua_tostring(L, -2),
+					     lua_tostring(L, -1)) < 0) {
+				httpc_request_delete(req);
+				return luaT_error(L);
+			}
+			lua_pop(L, 1);
+		}
+	}
+	lua_pop(L, 1);
+
+	const char *method = luaL_checkstring(L, 2);
+	const char *url  = luaL_checkstring(L, 3);
+	if (httpc_set_url(req, method, url) != 0) {
+		httpc_request_delete(req);
+		return luaT_error(L);
+	}
 
 	double timeout = TIMEOUT_INFINITY;
 	int max_header_name_length = HEADER_NAME_LEN;
@@ -170,21 +194,6 @@ luaT_httpc_request(lua_State *L)
 		httpc_request_delete(req);
 		return luaL_error(L, "fifth argument must be a table");
 	}
-
-	lua_getfield(L, 5, "headers");
-	if (!lua_isnil(L, -1)) {
-		lua_pushnil(L);
-		while (lua_next(L, -2) != 0) {
-			if (httpc_set_header(req, "%s: %s",
-					     lua_tostring(L, -2),
-					     lua_tostring(L, -1)) < 0) {
-				httpc_request_delete(req);
-				return luaT_error(L);
-			}
-			lua_pop(L, 1);
-		}
-	}
-	lua_pop(L, 1);
 
 	lua_getfield(L, 5, "ca_path");
 	if (!lua_isnil(L, -1))

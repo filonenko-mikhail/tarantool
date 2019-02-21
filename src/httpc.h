@@ -109,16 +109,22 @@ struct httpc_request {
 	struct region resp_headers;
 	/** buffer of body */
 	struct region resp_body;
+	/**
+	 * A bitmask of the http request headers from among
+	 * the headers that httpc can set automatically.
+	 * Each bit represents some auto-managed HTTP header.
+	 * This allows to prevent set them twice.
+	 */
+	uint8_t auto_headers_mask;
 };
 
 /**
  * @brief Create a new HTTP request
- * @param ctx - reference to context
+ * @param env - HTTP client environment.
  * @return a new HTTP request object
  */
 struct httpc_request *
-httpc_request_new(struct httpc_env *env, const char *method,
-		  const char *url);
+httpc_request_new(struct httpc_env *env);
 
 /**
  * @brief Delete HTTP request
@@ -136,6 +142,17 @@ httpc_request_delete(struct httpc_request *req);
  */
 int
 httpc_set_header(struct httpc_request *req, const char *fmt, ...);
+
+/**
+ * Set HTTP method and destination url, set service headers.
+ * @param req HTTP request object to update.
+ * @param method HTTP request method (GET, HEAD, POST, PUT...).
+ * @param url The network resource URL address string.
+ * @retval 0 On success.
+ * @retval -1 Otherwise.
+ */
+int
+httpc_set_url(struct httpc_request *req, const char *method, const char *url);
 
 /**
  * Sets body of request
