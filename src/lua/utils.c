@@ -1043,11 +1043,11 @@ luaL_iterator_next(lua_State *L, struct luaL_iterator *it)
 	return nresults;
 }
 
-void luaL_iterator_delete(lua_State *L, struct luaL_iterator *it)
+void luaL_iterator_delete(struct luaL_iterator *it)
 {
-	luaL_unref(L, LUA_REGISTRYINDEX, it->gen);
-	luaL_unref(L, LUA_REGISTRYINDEX, it->param);
-	luaL_unref(L, LUA_REGISTRYINDEX, it->state);
+	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, it->gen);
+	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, it->param);
+	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, it->state);
 	free(it);
 }
 

@@ -555,7 +555,7 @@ luaL_iterator_next(lua_State *L, struct luaL_iterator *it);
 /**
  * Free all resources held by the iterator.
  */
-void luaL_iterator_delete(lua_State *L, struct luaL_iterator *it);
+void luaL_iterator_delete(struct luaL_iterator *it);
 
 /* }}} */
 

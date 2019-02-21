@@ -98,6 +98,13 @@ main()
 
 	struct lua_State *L = luaL_newstate();
 	luaL_openlibs(L);
+	tarantool_L = L;
+
+	/*
+	 * Check that everything works fine in a thread (a fiber)
+	 * other then the main one.
+	 */
+	L = lua_newthread(L);
 
 	/*
 	 * Expose luafun.
@@ -148,7 +155,7 @@ main()
 		is(lua_gettop(L) - top, 0, "%s: stack size", description);
 
 		/* Free the luaL_iterator structure. */
-		luaL_iterator_delete(L, it);
+		luaL_iterator_delete(it);
 
 		/* Check stack size. */
 		is(lua_gettop(L) - top, 0, "%s: stack size", description);
