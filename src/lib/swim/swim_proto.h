@@ -92,6 +92,12 @@ enum {
  * |         },                                                  |
  * |         ...                                                 |
  * |     ],                                                      |
+ * |                                                             |
+ * |               OR/AND                                        |
+ * |                                                             |
+ * |     SWIM_QUIT: {                                            |
+ * |         SWIM_QUIT_INCARNATION: uint                         |
+ * |     }                                                       |
  * | }                                                           |
  * +-------------------------------------------------------------+
  */
@@ -110,6 +116,8 @@ enum swim_member_status {
 	 * from the membership, if it is not pinned.
 	 */
 	MEMBER_DEAD,
+	/** The member has voluntary left the cluster. */
+	MEMBER_LEFT,
 	swim_member_status_MAX,
 };
 
@@ -163,6 +171,7 @@ enum swim_body_key {
 	SWIM_ANTI_ENTROPY,
 	SWIM_FAILURE_DETECTION,
 	SWIM_DISSEMINATION,
+	SWIM_QUIT,
 };
 
 /**
@@ -594,6 +603,29 @@ swim_route_bin_create(struct swim_route_bin *route,
 		      const struct sockaddr_in *dst);
 
 /** }}}                     Meta component                      */
+
+enum swim_quit_key {
+	/** Incarnation to ignore old quit messages. */
+	SWIM_QUIT_INCARNATION = 0,
+};
+
+/** Quit section. Describes voluntary quit from the cluster. */
+struct PACKED swim_quit_bin {
+	/** mp_encode_uint(SWIM_QUIT) */
+	uint8_t k_quit;
+	/** mp_encode_map(1) */
+	uint8_t m_quit;
+
+	/** mp_encode_uint(SWIM_QUIT_INCARNATION) */
+	uint8_t k_incarnation;
+	/** mp_encode_uint(64bit incarnation) */
+	uint8_t m_incarnation;
+	uint64_t v_incarnation;
+};
+
+/** Initialize quit section. */
+void
+swim_quit_bin_create(struct swim_quit_bin *header, uint64_t incarnation);
 
 /**
  * Helpers to decode some values - map, array, etc with

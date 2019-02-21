@@ -312,6 +312,16 @@ lua_swim_remove_member(struct lua_State *L)
 	return 1;
 }
 
+/** Remove a SWIM instance pointer from Lua space, nullify. */
+static void
+lua_swim_invalidate(struct lua_State *L)
+{
+	uint32_t ctypeid;
+	struct swim **cdata = (struct swim **) luaL_checkcdata(L, 1, &ctypeid);
+	assert(ctypeid == CTID_STRUCT_SWIM_PTR);
+	*cdata = NULL;
+}
+
 /**
  * Destroy and delete a SWIM instance. All its memory is freed, it
  * stops participating in any rounds, the socket is closed. No
@@ -326,10 +336,7 @@ lua_swim_delete(struct lua_State *L)
 	if (swim == NULL)
 		return luaL_error(L, "Usage: swim:delete()");
 	swim_delete(swim);
-	uint32_t ctypeid;
-	struct swim **cdata = (struct swim **) luaL_checkcdata(L, 1, &ctypeid);
-	assert(ctypeid == CTID_STRUCT_SWIM_PTR);
-	*cdata = NULL;
+	lua_swim_invalidate(L);
 	return 0;
 }
 
@@ -379,6 +386,23 @@ lua_swim_probe_member(struct lua_State *L)
 	return 1;
 }
 
+/**
+ * Gracefully leave the cluster. The Lua stack should contain one
+ * value - a SWIM instance. After this method is called, the SWIM
+ * instance is deleted and can not be used.
+ * @param L Lua state.
+ */
+static int
+lua_swim_quit(struct lua_State *L)
+{
+	struct swim *swim = lua_swim_ptr(L, 1);
+	if (swim == NULL)
+		return luaL_error(L, "Usage: swim:quit()");
+	swim_quit(swim);
+	lua_swim_invalidate(L);
+	return 0;
+}
+
 void
 tarantool_lua_swim_init(struct lua_State *L)
 {
@@ -390,6 +414,7 @@ tarantool_lua_swim_init(struct lua_State *L)
 		{"delete", lua_swim_delete},
 		{"info", lua_swim_info},
 		{"probe_member", lua_swim_probe_member},
+		{"quit", lua_swim_quit},
 		{NULL, NULL}
 	};
 	luaL_register_module(L, "swim", lua_swim_methods);

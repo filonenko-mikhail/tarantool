@@ -38,6 +38,7 @@ const char *swim_member_status_strs[] = {
 	"alive",
 	"suspected",
 	"dead",
+	"left",
 };
 
 const char *swim_fd_msg_type_strs[] = {
@@ -581,4 +582,14 @@ swim_route_bin_create(struct swim_route_bin *route,
 	route->k_dst_port = SWIM_ROUTE_DST_PORT;
 	route->m_dst_port = 0xcd;
 	route->v_dst_port = mp_bswap_u16(dst->sin_port);
+}
+
+void
+swim_quit_bin_create(struct swim_quit_bin *header, uint64_t incarnation)
+{
+	header->k_quit = SWIM_QUIT;
+	header->m_quit = 0x81;
+	header->k_incarnation = SWIM_QUIT_INCARNATION;
+	header->m_incarnation = 0xcf;
+	header->v_incarnation = mp_bswap_u64(incarnation);
 }
