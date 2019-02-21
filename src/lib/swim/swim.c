@@ -141,8 +141,14 @@ enum {
 	 */
 	ACK_TIMEOUT_DEFAULT = 30,
 	/**
-	 * If a member has not been responding to pings this
-	 * number of times, it is considered to be dead.
+	 * If an alive member has not been responding to pings
+	 * this number of times, it is suspected to be dead. To
+	 * confirm the death it should fail more pings.
+	 */
+	NO_ACKS_TO_SUSPECT = 2,
+	/**
+	 * If a suspected member has not been responding to pings
+	 * this number of times, it is considered to be dead.
 	 * According to the SWIM paper, for a member it is enough
 	 * to do not respond on one direct ping, and on K
 	 * simultanous indirect pings, to be considered as dead.
@@ -159,6 +165,11 @@ enum {
 	 * anti-entropy components.
 	 */
 	NO_ACKS_TO_GC = 2,
+	/**
+	 * Number of attempts to reach out a member who did not
+	 * answered on a regular ping via another members.
+	 */
+	INDIRECT_PING_COUNT = 2,
 };
 
 /**
@@ -390,6 +401,15 @@ struct swim {
 	struct rlist queue_events;
 };
 
+/** Get a random member from a members table. */
+static inline struct swim_member *
+swim_random_member(struct swim *swim)
+{
+	int rnd = swim_scaled_rand(0, mh_size(swim->members) - 1);
+	mh_int_t node = mh_swim_table_random_notnull(swim->members, rnd);
+	return *mh_swim_table_node(swim->members, node);
+}
+
 /** Reset cached round message on any change of any member. */
 static inline void
 cached_round_msg_invalidate(struct swim *swim)
@@ -399,11 +419,12 @@ cached_round_msg_invalidate(struct swim *swim)
 
 /** Put the member into a list of ACK waiters. */
 static void
-swim_member_wait_ack(struct swim *swim, struct swim_member *member)
+swim_member_wait_ack(struct swim *swim, struct swim_member *member,
+		     int hop_count)
 {
 	if (heap_node_is_stray(&member->in_heap_wait_ack)) {
-		member->ping_deadline = swim_time() +
-					swim->wait_ack_tick.interval;
+		double timeout = swim->wait_ack_tick.interval * hop_count;
+		member->ping_deadline = swim_time() + timeout;
 		heap_wait_ack_insert(&swim->heap_wait_ack, member);
 	}
 }
@@ -590,7 +611,7 @@ swim_ping_task_complete(struct swim_task *task,
 	struct swim *swim = swim_by_scheduler(scheduler);
 	struct swim_member *m = container_of(task, struct swim_member,
 					     ping_task);
-	swim_member_wait_ack(swim, m);
+	swim_member_wait_ack(swim, m, 1);
 }
 
 /**
@@ -938,7 +959,7 @@ swim_round_step_complete(struct swim_task *task,
 		 * Each round message contains failure detection
 		 * section with a ping.
 		 */
-		swim_member_wait_ack(swim, m);
+		swim_member_wait_ack(swim, m, 1);
 		/* As well as dissemination. */
 		swim_decrease_events_ttl(swim);
 	}
@@ -947,12 +968,15 @@ swim_round_step_complete(struct swim_task *task,
 /** Schedule send of a failure detection message. */
 static void
 swim_send_fd_request(struct swim *swim, struct swim_task *task,
-		     const struct sockaddr_in *dst, enum swim_fd_msg_type type)
+		     const struct sockaddr_in *dst, enum swim_fd_msg_type type,
+		     const struct sockaddr_in *proxy)
 {
 	/*
 	 * Reset packet allocator in case if task is being reused.
 	 */
 	swim_packet_create(&task->packet);
+	if (proxy != NULL)
+		swim_task_proxy(task, proxy);
 	char *header = swim_packet_alloc(&task->packet, 1);
 	int map_size = swim_encode_src_uuid(swim, &task->packet);
 	map_size += swim_encode_failure_detection(swim, &task->packet, type);
@@ -967,17 +991,82 @@ swim_send_fd_request(struct swim *swim, struct swim_task *task,
 /** Schedule send of an ack. */
 static inline void
 swim_send_ack(struct swim *swim, struct swim_task *task,
-	      const struct sockaddr_in *dst)
+	      const struct sockaddr_in *dst, const struct sockaddr_in *proxy)
 {
-	swim_send_fd_request(swim, task, dst, SWIM_FD_MSG_ACK);
+	swim_send_fd_request(swim, task, dst, SWIM_FD_MSG_ACK, proxy);
 }
 
 /** Schedule send of a ping. */
 static inline void
 swim_send_ping(struct swim *swim, struct swim_task *task,
-	       const struct sockaddr_in *dst)
+	       const struct sockaddr_in *dst, const struct sockaddr_in *proxy)
 {
-	swim_send_fd_request(swim, task, dst, SWIM_FD_MSG_PING);
+	swim_send_fd_request(swim, task, dst, SWIM_FD_MSG_PING, proxy);
+}
+
+/**
+ * Indirect ping task. It is executed multiple times to send a
+ * ping to several random members. Main motivation of this task is
+ * to do not create many tasks for indirect pings swarm, but reuse
+ * one.
+ */
+struct swim_iping_task {
+	/** Base structure. */
+	struct swim_task base;
+	/**
+	 * How many times to send. Decremented on each send and on
+	 * 0 the task is deleted.
+	 */
+	int ttl;
+};
+
+/** Reschedule the task with a different proxy, or delete. */
+static void
+swim_iping_task_complete(struct swim_task *base_task,
+			 struct swim_scheduler *scheduler, int rc)
+{
+	(void) rc;
+	struct swim *swim = swim_by_scheduler(scheduler);
+	struct swim_iping_task *task = (struct swim_iping_task *) base_task;
+	if (--task->ttl == 0) {
+		swim_task_destroy(base_task);
+		free(task);
+		return;
+	}
+	swim_task_send(base_task, &swim_random_member(swim)->addr, scheduler);
+}
+
+/**
+ * Schedule a number of indirect pings of a member with the
+ * specified address and UUID.
+ */
+static inline int
+swim_send_indirect_pings(struct swim *swim, const struct sockaddr_in *dst)
+{
+	struct swim_iping_task *task =
+		(struct swim_iping_task *) malloc(sizeof(*task));
+	if (task == NULL) {
+		diag_set(OutOfMemory, sizeof(*task), "malloc", "task");
+		return -1;
+	}
+	task->ttl = INDIRECT_PING_COUNT;
+	swim_task_create(&task->base, swim_iping_task_complete,
+			 swim_task_delete_cb);
+	swim_send_ping(swim, &task->base, dst, &swim_random_member(swim)->addr);
+	return 0;
+}
+
+/** Schedule an indirect ACK. */
+static inline int
+swim_send_indirect_ack(struct swim *swim, const struct sockaddr_in *dst,
+		       const struct sockaddr_in *proxy)
+{
+	struct swim_task *task = swim_task_new(swim_task_delete_cb,
+					       swim_task_delete_cb);
+	if (task == NULL)
+		return -1;
+	swim_send_ack(swim, task, dst, proxy);
+	return 0;
 }
 
 /**
@@ -1001,6 +1090,14 @@ swim_check_acks(struct ev_loop *loop, struct ev_periodic *p, int events)
 		++m->unacknowledged_pings;
 		switch (m->status) {
 		case MEMBER_ALIVE:
+			if (m->unacknowledged_pings < NO_ACKS_TO_SUSPECT)
+				break;
+			m->status = MEMBER_SUSPECTED;
+			swim_member_status_is_updated(m, swim);
+			if (swim_send_indirect_pings(swim, &m->addr) != 0)
+				diag_log();
+			break;
+		case MEMBER_SUSPECTED:
 			if (m->unacknowledged_pings >= NO_ACKS_TO_DEAD) {
 				m->status = MEMBER_DEAD;
 				swim_member_status_is_updated(m, swim);
@@ -1014,7 +1111,7 @@ swim_check_acks(struct ev_loop *loop, struct ev_periodic *p, int events)
 		default:
 			unreachable();
 		}
-		swim_send_ping(swim, &m->ping_task, &m->addr);
+		swim_send_ping(swim, &m->ping_task, &m->addr, NULL);
 	}
 }
 
@@ -1177,7 +1274,8 @@ swim_process_anti_entropy(struct swim *swim, const char **pos, const char *end)
 static int
 swim_process_failure_detection(struct swim *swim, const char **pos,
 			       const char *end, const struct sockaddr_in *src,
-			       const struct tt_uuid *uuid)
+			       const struct tt_uuid *uuid,
+			       const struct sockaddr_in *proxy)
 {
 	const char *msg_pref = "invalid failure detection message:";
 	struct swim_failure_detection_def def;
@@ -1195,7 +1293,13 @@ swim_process_failure_detection(struct swim *swim, const char **pos,
 
 	switch (def.type) {
 	case SWIM_FD_MSG_PING:
-		swim_send_ack(swim, &member->ack_task, &member->addr);
+		if (proxy == NULL) {
+			swim_send_ack(swim, &member->ack_task, &member->addr,
+				      NULL);
+		} else if (swim_send_indirect_ack(swim, &member->addr,
+						  proxy) != 0) {
+			diag_log();
+		}
 		break;
 	case SWIM_FD_MSG_ACK:
 		if (def.incarnation >= member->incarnation) {
@@ -1247,7 +1351,6 @@ swim_on_input(struct swim_scheduler *scheduler, const char *pos,
 	      const char *end, const struct sockaddr_in *src,
 	      const struct sockaddr_in *proxy)
 {
-	(void) proxy;
 	const char *msg_pref = "invalid message:";
 	struct swim *swim = swim_by_scheduler(scheduler);
 	struct tt_uuid uuid;
@@ -1283,7 +1386,8 @@ swim_on_input(struct swim_scheduler *scheduler, const char *pos,
 			say_verbose("SWIM %d: process failure detection",
 				    swim_fd(swim));
 			if (swim_process_failure_detection(swim, &pos, end,
-							   src, &uuid) != 0)
+							   src, &uuid,
+							   proxy) != 0)
 				goto error;
 			break;
 		case SWIM_DISSEMINATION:
@@ -1507,7 +1611,7 @@ swim_probe_member(struct swim *swim, const char *uri)
 					    swim_task_delete_cb);
 	if (t == NULL)
 		return -1;
-	swim_send_ping(swim, t, &addr);
+	swim_send_ping(swim, t, &addr, NULL);
 	return 0;
 }
 
