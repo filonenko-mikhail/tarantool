@@ -39,6 +39,7 @@
 #include <lua.h>
 #include <lauxlib.h>
 
+#include "fiber.h"
 #include "lua/error.h"
 #include "lua/utils.h"
 #include "small/ibuf.h"
@@ -90,7 +91,7 @@ struct merger_source_vtab {
 	 * table and iterator types are saved as references within
 	 * the Lua state.
 	 */
-	void (*delete)(struct merger_source *base, struct lua_State *L);
+	void (*delete)(struct merger_source *base);
 	/**
 	 * Update source->tuple of specific source.
 	 *
@@ -99,8 +100,7 @@ struct merger_source_vtab {
 	 * Return 0 when successfully fetched a tuple or NULL. In
 	 * case of an error set a diag and return -1.
 	 */
-	int (*next)(struct merger_source *base, box_tuple_format_t *format,
-		    struct lua_State *L);
+	int (*next)(struct merger_source *base, box_tuple_format_t *format);
 };
 
 /**
@@ -285,11 +285,11 @@ merger_source_ref(struct merger_source *source)
  * reached zero, free the source.
  */
 static void
-merger_source_unref(struct merger_source *source, struct lua_State *L)
+merger_source_unref(struct merger_source *source)
 {
 	assert(source->refs - 1 >= 0);
 	if (--source->refs == 0)
-		source->vtab->delete(source, L);
+		source->vtab->delete(source);
 }
 
 /**
@@ -301,7 +301,7 @@ lbox_merger_source_gc(struct lua_State *L)
 	struct merger_source *source;
 	if ((source = check_merger_source(L, 1)) == NULL)
 		return 0;
-	merger_source_unref(source, L);
+	merger_source_unref(source);
 	return 0;
 }
 
@@ -337,12 +337,10 @@ struct merger_source_buffer {
 /* Virtual methods declarations */
 
 static void
-luaL_merger_source_buffer_delete(struct merger_source *base,
-				 struct lua_State *L);
+luaL_merger_source_buffer_delete(struct merger_source *base);
 static int
 luaL_merger_source_buffer_next(struct merger_source *base,
-			       box_tuple_format_t *format,
-			       struct lua_State *L);
+			       box_tuple_format_t *format);
 
 /* Non-virtual methods */
 
@@ -392,8 +390,9 @@ luaL_merger_source_buffer_new(struct lua_State *L, int fetch_idx)
  */
 static int
 luaL_merger_source_buffer_fetch(struct merger_source_buffer *source,
-				struct tuple *last_tuple, struct lua_State *L)
+				struct tuple *last_tuple)
 {
+	struct lua_State *L = fiber()->storage.lua.stack;
 	/* Push fetch callback. */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, source->fetch_ref);
 	/* Push last_tuple, processed. */
@@ -429,17 +428,16 @@ luaL_merger_source_buffer_fetch(struct merger_source_buffer *source,
 /* Virtual methods */
 
 static void
-luaL_merger_source_buffer_delete(struct merger_source *base,
-				 MAYBE_UNUSED struct lua_State *L)
+luaL_merger_source_buffer_delete(struct merger_source *base)
 {
 	struct merger_source_buffer *source = container_of(base,
 		struct merger_source_buffer, base);
 
 	assert(source->fetch_ref > 0);
-	luaL_unref(L, LUA_REGISTRYINDEX, source->fetch_ref);
+	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->fetch_ref);
 
 	if (source->ref > 0)
-		luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
+		luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->ref);
 
 	if (base->tuple != NULL)
 		box_tuple_unref(base->tuple);
@@ -449,8 +447,7 @@ luaL_merger_source_buffer_delete(struct merger_source *base,
 
 static int
 luaL_merger_source_buffer_next(struct merger_source *base,
-			       box_tuple_format_t *format,
-			       struct lua_State *L)
+			       box_tuple_format_t *format)
 {
 	struct merger_source_buffer *source = container_of(base,
 		struct merger_source_buffer, base);
@@ -463,7 +460,7 @@ luaL_merger_source_buffer_next(struct merger_source *base,
 	 * ask more and stop if no data arrived.
 	 */
 	if (source->remaining_tuples_cnt == 0) {
-		int rc = luaL_merger_source_buffer_fetch(source, last_tuple, L);
+		int rc = luaL_merger_source_buffer_fetch(source, last_tuple);
 		if (rc != 0)
 			return -1;
 		if (source->remaining_tuples_cnt == 0)
@@ -551,12 +548,10 @@ struct merger_source_table {
 /* Virtual methods declarations */
 
 static void
-luaL_merger_source_table_delete(struct merger_source *base,
-				struct lua_State *L);
+luaL_merger_source_table_delete(struct merger_source *base);
 static int
 luaL_merger_source_table_next(struct merger_source *base,
-			      box_tuple_format_t *format,
-			      struct lua_State *L);
+			      box_tuple_format_t *format);
 
 /* Non-virtual methods */
 
@@ -604,8 +599,9 @@ luaL_merger_source_table_new(struct lua_State *L, int fetch_idx)
  */
 static int
 luaL_merger_source_table_fetch(struct merger_source_table *source,
-			       struct tuple *last_tuple, struct lua_State *L)
+			       struct tuple *last_tuple)
 {
+	struct lua_State *L = fiber()->storage.lua.stack;
 	/* Push fetch callback. */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, source->fetch_ref);
 	/* Push last_tuple, processed. */
@@ -633,17 +629,16 @@ luaL_merger_source_table_fetch(struct merger_source_table *source,
 /* Virtual methods */
 
 static void
-luaL_merger_source_table_delete(struct merger_source *base,
-				struct lua_State *L)
+luaL_merger_source_table_delete(struct merger_source *base)
 {
 	struct merger_source_table *source = container_of(base,
 		struct merger_source_table, base);
 
 	assert(source->fetch_ref > 0);
-	luaL_unref(L, LUA_REGISTRYINDEX, source->fetch_ref);
+	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->fetch_ref);
 
 	if (source->ref > 0)
-		luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
+		luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->ref);
 
 	if (base->tuple != NULL)
 		box_tuple_unref(base->tuple);
@@ -653,9 +648,9 @@ luaL_merger_source_table_delete(struct merger_source *base,
 
 static int
 luaL_merger_source_table_next(struct merger_source *base,
-			      box_tuple_format_t *format,
-			      struct lua_State *L)
+			      box_tuple_format_t *format)
 {
+	struct lua_State *L = fiber()->storage.lua.stack;
 	struct merger_source_table *source = container_of(base,
 		struct merger_source_table, base);
 
@@ -673,7 +668,7 @@ luaL_merger_source_table_next(struct merger_source *base,
 	if (source->ref == 0 || lua_isnil(L, -1)) {
 		if (source->ref > 0)
 			lua_pop(L, 2);
-		int rc = luaL_merger_source_table_fetch(source, last_tuple, L);
+		int rc = luaL_merger_source_table_fetch(source, last_tuple);
 		if (rc != 0)
 			return -1;
 		/*
@@ -746,12 +741,10 @@ struct merger_source_iterator {
 /* Virtual methods declarations */
 
 static void
-luaL_merger_source_iterator_delete(struct merger_source *base,
-				   struct lua_State *L);
+luaL_merger_source_iterator_delete(struct merger_source *base);
 static int
 luaL_merger_source_iterator_next(struct merger_source *base,
-				 box_tuple_format_t *format,
-				 struct lua_State *L);
+				 box_tuple_format_t *format);
 
 /* Non-virtual methods */
 
@@ -799,8 +792,9 @@ luaL_merger_source_iterator_new(struct lua_State *L, int fetch_idx)
  */
 static int
 luaL_merger_source_iterator_fetch(struct merger_source_iterator *source,
-				  struct tuple *last_tuple, struct lua_State *L)
+				  struct tuple *last_tuple)
 {
+	struct lua_State *L = fiber()->storage.lua.stack;
 	/* Push fetch callback. */
 	lua_rawgeti(L, LUA_REGISTRYINDEX, source->fetch_ref);
 	/* Push last_tuple, processed. */
@@ -830,14 +824,13 @@ luaL_merger_source_iterator_fetch(struct merger_source_iterator *source,
 /* Virtual methods */
 
 static void
-luaL_merger_source_iterator_delete(struct merger_source *base,
-				   struct lua_State *L)
+luaL_merger_source_iterator_delete(struct merger_source *base)
 {
 	struct merger_source_iterator *source = container_of(base,
 		struct merger_source_iterator, base);
 
 	assert(source->fetch_ref > 0);
-	luaL_unref(L, LUA_REGISTRYINDEX, source->fetch_ref);
+	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->fetch_ref);
 
 	if (source->it != NULL)
 		luaL_iterator_delete(source->it);
@@ -850,9 +843,9 @@ luaL_merger_source_iterator_delete(struct merger_source *base,
 
 static int
 luaL_merger_source_iterator_next(struct merger_source *base,
-				 box_tuple_format_t *format,
-				 struct lua_State *L)
+				 box_tuple_format_t *format)
 {
+	struct lua_State *L = fiber()->storage.lua.stack;
 	struct merger_source_iterator *source = container_of(base,
 		struct merger_source_iterator, base);
 
@@ -866,8 +859,7 @@ luaL_merger_source_iterator_next(struct merger_source *base,
 	 * If all data were processed, try to fetch more.
 	 */
 	if (nresult == 0) {
-		int rc = luaL_merger_source_iterator_fetch(source, last_tuple,
-							   L);
+		int rc = luaL_merger_source_iterator_fetch(source, last_tuple);
 		if (rc != 0)
 			return -1;
 		/*
@@ -937,7 +929,7 @@ parse_merger_source(struct lua_State *L, int idx, int ordinal,
 	}
 
 	/* Acquire the next tuple. */
-	int rc = base->vtab->next(base, ctx->format, L);
+	int rc = base->vtab->next(base, ctx->format);
 	if (rc) {
 		luaT_pusherror(L, diag_last_error(diag_get()));
 		return NULL;
@@ -1035,7 +1027,7 @@ lbox_merger_context_new(struct lua_State *L)
  * iterator types are saved as references within the Lua state.
  */
 static void
-merger_state_delete(struct lua_State *L, struct merger_state *state)
+merger_state_delete(struct merger_state *state)
 {
 	merger_heap_destroy(&state->heap);
 	box_key_def_delete(state->key_def);
@@ -1043,7 +1035,7 @@ merger_state_delete(struct lua_State *L, struct merger_state *state)
 	for (uint32_t i = 0; i < state->sources_count; ++i) {
 		assert(state->sources != NULL);
 		assert(state->sources[i] != NULL);
-		merger_source_unref(state->sources[i], L);
+		merger_source_unref(state->sources[i]);
 	}
 
 	if (state->sources != NULL)
@@ -1061,7 +1053,7 @@ lbox_merger_state_gc(struct lua_State *L)
 	struct merger_state *state;
 	if ((state = check_merger_state(L, 1)) == NULL)
 		return 0;
-	merger_state_delete(L, state);
+	merger_state_delete(state);
 	return 0;
 }
 
@@ -1211,7 +1203,7 @@ merger_state_new(struct lua_State *L)
 
 	if (parse_opts(L, 3, state) != 0 ||
 	    parse_sources(L, 2, ctx, state) != 0) {
-		merger_state_delete(L, state);
+		merger_state_delete(state);
 		lua_error(L);
 		unreachable();
 		return NULL;
@@ -1262,8 +1254,8 @@ source_less(const heap_t *heap, const struct heap_node *a,
  * Otherwise return 0 and store the next tuple in @a out.
  */
 static int
-merger_next(struct lua_State *L, struct merger_context *ctx,
-	    struct merger_state *state, struct tuple **out)
+merger_next(struct merger_context *ctx, struct merger_state *state,
+	    struct tuple **out)
 {
 	struct heap_node *hnode = merger_heap_top(&state->heap);
 	if (hnode == NULL) {
@@ -1275,7 +1267,7 @@ merger_next(struct lua_State *L, struct merger_context *ctx,
 						    hnode);
 	struct tuple *tuple = source->tuple;
 	assert(tuple != NULL);
-	int rc = source->vtab->next(source, ctx->format, L);
+	int rc = source->vtab->next(source, ctx->format);
 	if (rc != 0)
 		return -1;
 	if (source->tuple == NULL)
@@ -1309,7 +1301,7 @@ lbox_merger_gen(struct lua_State *L)
 				     "merger_state)");
 
 	struct tuple *tuple;
-	if (merger_next(L, ctx, state, &tuple) < 0)
+	if (merger_next(ctx, state, &tuple) < 0)
 		return luaT_error(L);
 	if (tuple == NULL) {
 		lua_pushnil(L);
@@ -1344,7 +1336,7 @@ lbox_merger_ipairs(struct lua_State *L)
 	/* Stack: merger_context. */
 
 	if (state->obuf != NULL) {
-		merger_state_delete(L, state);
+		merger_state_delete(state);
 		return luaL_error(L, "\"buffer\" option is forbidden with "
 				  "merger.pairs(<...>)");
 	}
@@ -1391,7 +1383,7 @@ encode_result_buffer(struct lua_State *L, struct merger_context *ctx,
 	/* Fetch, merge and copy tuples to the buffer. */
 	struct tuple *tuple;
 	int rc;
-	while ((rc = merger_next(L, ctx, state, &tuple)) == 0) {
+	while ((rc = merger_next(ctx, state, &tuple)) == 0) {
 		assert(tuple != NULL);
 		uint32_t bsize = tuple->bsize;
 		ibuf_reserve(obuf, bsize);
@@ -1428,7 +1420,7 @@ create_result_table(struct lua_State *L, struct merger_context *ctx,
 	/* Fetch, merge and save tuples to the table. */
 	struct tuple *tuple;
 	int rc;
-	while ((rc = merger_next(L, ctx, state, &tuple)) == 0) {
+	while ((rc = merger_next(ctx, state, &tuple)) == 0) {
 		assert(tuple != NULL);
 		luaT_pushtuple(L, tuple);
 		lua_rawseti(L, -2, cur);
@@ -1469,12 +1461,12 @@ lbox_merger_select(struct lua_State *L)
 	if (state->obuf == NULL) {
 		create_result_table(L, ctx, state); // XXX: can raise, will leak
 						    // state
-		merger_state_delete(L, state);
+		merger_state_delete(state);
 		return 1;
 	} else {
 		encode_result_buffer(L, ctx, state); // XXX: can raise, will
 						     // leak state
-		merger_state_delete(L, state);
+		merger_state_delete(state);
 		return 0;
 	}
 }
