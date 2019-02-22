@@ -57,20 +57,36 @@ docker_%:
 	docker rmi -f ${DOCKER_IMAGE}_tmp
 
 deps_ubuntu:
-	sudo apt-get update && sudo apt-get install -y -f \
+	sudo apt-get update \
+		>/tmp/apt_update.log 2>&1 \
+		&& echo "APT update PASSED" \
+		|| ( echo "APT update FAILED" ; cat /tmp/apt_update.log ; exit 1 )
+	sudo apt-get install -y -f \
 		build-essential cmake coreutils sed \
 		libreadline-dev libncurses5-dev libyaml-dev libssl-dev \
 		libcurl4-openssl-dev libunwind-dev libicu-dev \
 		python python-pip python-setuptools python-dev \
 		python-msgpack python-yaml python-argparse python-six python-gevent \
-		lcov ruby
+		lcov ruby \
+		>/tmp/apt_install.log 2>&1 \
+		&& echo "APT install PASSED" \
+		|| ( echo "APT install FAILED" ; cat /tmp/apt_install.log ; exit 1 )
 
 test_ubuntu: deps_ubuntu
-	cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfoWError ${CMAKE_EXTRA_PARAMS}
-	make -j8
+	cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfoWError ${CMAKE_EXTRA_PARAMS} \
+		>/tmp/cmake.log 2>&1 \
+		&& echo "CMAKE PASSED" \
+		|| ( echo "CMAKE FAILED" ; cat /tmp/cmake.log ; exit 1 )
+	make -j8 \
+		>/tmp/make.log 2>&1 \
+		&& echo "MAKE PASSED" \
+		|| ( echo "MAKE FAILED" ; cat /tmp/make.log ; exit 1 )
 
 run_test_ubuntu:
-	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} 
+	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} Statistics \
+		>/tmp/test_${TEST}.log 2>&1 \
+		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 /tmp/test_${TEST}.log ) \
+		|| ( echo "TEST(${TEST}) FAILED" ; cat /tmp/test_${TEST}.log ; exit 1 )
 
 deps_osx:
 	brew update
@@ -95,7 +111,13 @@ test_osx: deps_osx
 
 coverage_ubuntu: deps_ubuntu
 	cmake . -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCOV=ON
-	make -j8
+		>/tmp/cmake.log 2>&1 \
+		&& echo "CMAKE PASSED" \
+		|| ( echo "CMAKE FAILED" ; cat /tmp/cmake.log ; exit 1 )
+	make -j8 \
+		>/tmp/make.log 2>&1 \
+		&& echo "MAKE PASSED" \
+		|| ( echo "MAKE FAILED" ; cat /tmp/make.log ; exit 1 )
 
 run_coverage_ubuntu: deps_ubuntu
 	# Enable --long tests for coverage
