@@ -13,10 +13,12 @@ package:
 test: test_$(TRAVIS_OS_NAME)
 
 # Redirect some targets via docker
-test_linux: docker_test_ubuntu
-coverage: docker_coverage_ubuntu
+test_linux:
+	TYPE=docker_test_ubuntu make -f .travis.mk docker_test_ubuntu
+coverage:
+	TYPE=docker_coverage_ubuntu make -f .travis.mk docker_coverage_ubuntu
 
-docker_%:
+docker_common:
 	mkdir -p ~/.cache/ccache
 	docker run \
 		--tty=true \
@@ -29,14 +31,14 @@ docker_%:
 		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE} \
-		make -f .travis.mk $(subst docker_,,$@)
+		make -f .travis.mk $(subst docker_,,${TYPE})
 	docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}_tmp
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
 	docker rm -f built_container_${TRAVIS_JOB_ID}
-	cd test && suites=`ls -1 */suite.ini | sed 's#/.*##g'` ; cd .. ; \
+	cd test && suites=`ls -1 vinyl*/suite.ini | sed 's#/.*##g'` ; cd .. ; \
 	failed=0 ; \
 	for suite in $$suites ; do \
-		tests=`cd test/$$suite && ls -1 *.lua | sed 's#.test.lua##g'` ; \
+		tests=`cd test/$$suite && ls -1 *.test.lua | sed 's#.test.lua##g'` ; \
 		for test in $$tests ; do \
 			TEST=$$suite/$$test.test ; \
 			echo TEST=$$TEST ; \
@@ -51,10 +53,12 @@ docker_%:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				make -f .travis.mk $(subst docker_,run_,$@) ; \
+				make -f .travis.mk $(subst docker_,run_,${TYPE}) ; \
 		done ; \
 	done
 	docker rmi -f ${DOCKER_IMAGE}_tmp
+
+docker_test_ubuntu: docker_common
 
 deps_ubuntu:
 	sudo apt-get update \
@@ -77,16 +81,17 @@ test_ubuntu: deps_ubuntu
 		>/tmp/cmake.log 2>&1 \
 		&& echo "CMAKE PASSED" \
 		|| ( echo "CMAKE FAILED" ; cat /tmp/cmake.log ; exit 1 )
-	make -j8 \
+	make -j \
 		>/tmp/make.log 2>&1 \
 		&& echo "MAKE PASSED" \
 		|| ( echo "MAKE FAILED" ; cat /tmp/make.log ; exit 1 )
 
 run_test_ubuntu:
-	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} Statistics \
-		>/tmp/test_${TEST}.log 2>&1 \
-		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 /tmp/test_${TEST}.log ) \
-		|| ( echo "TEST(${TEST}) FAILED" ; cat /tmp/test_${TEST}.log ; exit 1 )
+	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
+	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} \
+		>$$file 2>&1 \
+		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file ) \
+		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
 
 deps_osx:
 	brew update
@@ -110,18 +115,24 @@ test_osx: deps_osx
 	deactivate
 
 coverage_ubuntu: deps_ubuntu
-	cmake . -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCOV=ON
+	cmake . -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCOV=ON \
 		>/tmp/cmake.log 2>&1 \
 		&& echo "CMAKE PASSED" \
 		|| ( echo "CMAKE FAILED" ; cat /tmp/cmake.log ; exit 1 )
-	make -j8 \
+	make -j \
 		>/tmp/make.log 2>&1 \
 		&& echo "MAKE PASSED" \
 		|| ( echo "MAKE FAILED" ; cat /tmp/make.log ; exit 1 )
 
-run_coverage_ubuntu: deps_ubuntu
+run_coverage_ubuntu:
 	# Enable --long tests for coverage
-	cd test && /usr/bin/python test-run.py -j 1 --force --long ${TEST}
+	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
+	cd test && /usr/bin/python test-run.py -j 1 --force --long ${TEST} \
+		>$$file 2>&1 \
+		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file ) \
+		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
+
+docker_coverage_ubuntu: docker_common
 	lcov --compat-libtool --directory src/ --capture --output-file coverage.info.tmp
 	lcov --compat-libtool --remove coverage.info.tmp 'tests/*' 'third_party/*' '/usr/*' \
 		--output-file coverage.info
