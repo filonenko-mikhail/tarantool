@@ -36,6 +36,7 @@ docker_common:
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
 	docker rm -f built_container_${TRAVIS_JOB_ID}
 	cd test && suites=`ls -1 */suite.ini | sed 's#/.*##g'` ; cd .. ; \
+	passed=0 ; \
 	failed=0 ; \
 	for suite in $$suites ; do \
 		tests=`cd test/$$suite && ls -1 *.test.lua 2>/dev/null | sed 's#.test.lua##g'` ; \
@@ -52,12 +53,18 @@ docker_common:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) || exit 1" || failed=$$(($$failed+1)) ; \
+				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) || exit 1" \
+				&& passed=$$(($$passed+1)) \
+				|| failed=$$(($$failed+1)) ; \
 		done ; \
 	done ; \
+	echo "Overall results:" ; \
+	echo "Passed # of tested scenarious $$passed" ; \
 	if [ "$$failed" -ne "0" ] ; then echo "Failed # of tests: $$failed" ; false ; fi
 
 docker_test_ubuntu: docker_common
+	# post test stage
+	docker rmi -f ${DOCKER_IMAGE}_tmp
 
 deps_ubuntu:
 	sudo apt-get update \
@@ -132,6 +139,7 @@ run_coverage_ubuntu:
 		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
 
 docker_coverage_ubuntu: docker_common
+	# post test stage
 	docker run \
 		--rm=true --tty=true \
 		--volume "${PWD}:/tarantool" \
@@ -143,8 +151,9 @@ docker_coverage_ubuntu: docker_common
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE}_tmp \
 		/bin/bash -c "make -f .travis.mk analyze_coverage_ubuntu || exit 1"
+	docker rmi -f ${DOCKER_IMAGE}_tmp
 
-analyze_coverage_ubuntu: docker_common
+analyze_coverage_ubuntu:
 	lcov --compat-libtool --directory src/ --capture --output-file coverage.info.tmp
 	lcov --compat-libtool --remove coverage.info.tmp 'tests/*' 'third_party/*' '/usr/*' \
 		--output-file coverage.info
@@ -154,7 +163,7 @@ analyze_coverage_ubuntu: docker_common
 		gem install coveralls-lcov; \
 		echo coveralls-lcov --service-name travis-ci --service-job-id $(TRAVIS_JOB_ID) --repo-token [FILTERED] coverage.info; \
 		coveralls-lcov --service-name travis-ci --service-job-id $(TRAVIS_JOB_ID) --repo-token $(COVERALLS_TOKEN) coverage.info; \
-	fi;
+	fi
 
 source:
 	git clone https://github.com/packpack/packpack.git packpack
