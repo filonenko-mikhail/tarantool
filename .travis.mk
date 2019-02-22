@@ -35,13 +35,12 @@ docker_common:
 	docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}_tmp
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
 	docker rm -f built_container_${TRAVIS_JOB_ID}
-	cd test && suites=`ls -1 vinyl*/suite.ini | sed 's#/.*##g'` ; cd .. ; \
+	cd test && suites=`ls -1 */suite.ini | sed 's#/.*##g'` ; cd .. ; \
 	failed=0 ; \
 	for suite in $$suites ; do \
 		tests=`cd test/$$suite && ls -1 *.test.lua | sed 's#.test.lua##g'` ; \
 		for test in $$tests ; do \
 			TEST=$$suite/$$test.test ; \
-			echo TEST=$$TEST ; \
 			docker run \
 				--rm=true --tty=true \
 				--volume "${PWD}:/tarantool" \
@@ -53,7 +52,7 @@ docker_common:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				make -f .travis.mk $(subst docker_,run_,${TYPE}) ; \
+				make -s -f .travis.mk $(subst docker_,run_,${TYPE}) ; \
 		done ; \
 	done
 	docker rmi -f ${DOCKER_IMAGE}_tmp
@@ -90,7 +89,7 @@ run_test_ubuntu:
 	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
 	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} \
 		>$$file 2>&1 \
-		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file ) \
+		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
 
 deps_osx:
@@ -129,7 +128,7 @@ run_coverage_ubuntu:
 	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
 	cd test && /usr/bin/python test-run.py -j 1 --force --long ${TEST} \
 		>$$file 2>&1 \
-		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file ) \
+		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
 
 docker_coverage_ubuntu: docker_common
