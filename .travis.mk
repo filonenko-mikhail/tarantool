@@ -31,14 +31,14 @@ docker_common:
 		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE} \
-		make -f .travis.mk $(subst docker_,,${TYPE})
+		/bin/bash -c "make -f .travis.mk $(subst docker_,,${TYPE}) || exit 1"
 	docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}_tmp
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
 	docker rm -f built_container_${TRAVIS_JOB_ID}
 	cd test && suites=`ls -1 */suite.ini | sed 's#/.*##g'` ; cd .. ; \
 	failed=0 ; \
 	for suite in $$suites ; do \
-		tests=`cd test/$$suite && ls -1 *.test.lua | sed 's#.test.lua##g'` ; \
+		tests=`cd test/$$suite && ls -1 *.test.lua 2>/dev/null | sed 's#.test.lua##g'` ; \
 		for test in $$tests ; do \
 			TEST=$$suite/$$test.test ; \
 			docker run \
@@ -52,10 +52,10 @@ docker_common:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				make -s -f .travis.mk $(subst docker_,run_,${TYPE}) ; \
+				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) || exit 1" || failed=$$(($$failed+1)) ; \
 		done ; \
-	done
-	docker rmi -f ${DOCKER_IMAGE}_tmp
+	done ; \
+	if [ "$$failed" -ne "0" ] ; then echo "Failed # of tests: $$failed" ; false ; fi
 
 docker_test_ubuntu: docker_common
 
@@ -87,7 +87,7 @@ test_ubuntu: deps_ubuntu
 
 run_test_ubuntu:
 	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
-	cd test && /usr/bin/python test-run.py -j 1 --force ${TEST} \
+	cd test && /usr/bin/python test-run.py -j 1 ${TEST} \
 		>$$file 2>&1 \
 		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
@@ -126,12 +126,25 @@ coverage_ubuntu: deps_ubuntu
 run_coverage_ubuntu:
 	# Enable --long tests for coverage
 	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
-	cd test && /usr/bin/python test-run.py -j 1 --force --long ${TEST} \
+	cd test && /usr/bin/python test-run.py -j 1 --long ${TEST} \
 		>$$file 2>&1 \
 		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
 
 docker_coverage_ubuntu: docker_common
+	docker run \
+		--rm=true --tty=true \
+		--volume "${PWD}:/tarantool" \
+		--volume "${HOME}/.cache:/cache" \
+		--workdir /tarantool \
+		-e XDG_CACHE_HOME=/cache \
+		-e CCACHE_DIR=/cache/ccache \
+		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
+		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
+		${DOCKER_IMAGE}_tmp \
+		/bin/bash -c "make -f .travis.mk analyze_coverage_ubuntu || exit 1"
+
+analyze_coverage_ubuntu: docker_common
 	lcov --compat-libtool --directory src/ --capture --output-file coverage.info.tmp
 	lcov --compat-libtool --remove coverage.info.tmp 'tests/*' 'third_party/*' '/usr/*' \
 		--output-file coverage.info
