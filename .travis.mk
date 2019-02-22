@@ -58,9 +58,18 @@ docker_common:
 				|| failed=$$(($$failed+1)) ; \
 		done ; \
 	done ; \
+	echo ; \
 	echo "Overall results:" ; \
-	echo "Passed # of tested scenarious $$passed" ; \
-	if [ "$$failed" -ne "0" ] ; then echo "Failed # of tests: $$failed" ; false ; fi
+	echo "================" ; \
+	echo "Passed # of tested scenarious: $$passed" ; \
+	if [ "$$failed" -ne "0" ] ; then \
+		echo "Failed # of tests: $$failed" ; \
+		echo ------------------- ; \
+		grep '\[ fail \]' ${PWD}/test_*.log | sed 's#.*:##g' ; \
+		echo =================== ; \
+		echo ; \
+		false ; \
+	fi
 
 docker_test_ubuntu: docker_common
 	# post test stage
@@ -68,9 +77,9 @@ docker_test_ubuntu: docker_common
 
 deps_ubuntu:
 	sudo apt-get update \
-		>/tmp/apt_update.log 2>&1 \
+		>/tarantool/apt_update.log 2>&1 \
 		&& echo "APT update PASSED" \
-		|| ( echo "APT update FAILED" ; cat /tmp/apt_update.log ; exit 1 )
+		|| ( echo "APT update FAILED" ; cat /tarantool/apt_update.log ; exit 1 )
 	sudo apt-get install -y -f \
 		build-essential cmake coreutils sed \
 		libreadline-dev libncurses5-dev libyaml-dev libssl-dev \
@@ -78,22 +87,22 @@ deps_ubuntu:
 		python python-pip python-setuptools python-dev \
 		python-msgpack python-yaml python-argparse python-six python-gevent \
 		lcov ruby \
-		>/tmp/apt_install.log 2>&1 \
+		>/tarantool/apt_install.log 2>&1 \
 		&& echo "APT install PASSED" \
-		|| ( echo "APT install FAILED" ; cat /tmp/apt_install.log ; exit 1 )
+		|| ( echo "APT install FAILED" ; cat /tarantool/apt_install.log ; exit 1 )
 
 test_ubuntu: deps_ubuntu
 	cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfoWError ${CMAKE_EXTRA_PARAMS} \
-		>/tmp/cmake.log 2>&1 \
+		>/tarantool/cmake.log 2>&1 \
 		&& echo "CMAKE PASSED" \
-		|| ( echo "CMAKE FAILED" ; cat /tmp/cmake.log ; exit 1 )
+		|| ( echo "CMAKE FAILED" ; cat /tarantool/cmake.log ; exit 1 )
 	make -j \
-		>/tmp/make.log 2>&1 \
+		>/tarantool/make.log 2>&1 \
 		&& echo "MAKE PASSED" \
-		|| ( echo "MAKE FAILED" ; cat /tmp/make.log ; exit 1 )
+		|| ( echo "MAKE FAILED" ; cat /tarantool/make.log ; exit 1 )
 
 run_test_ubuntu:
-	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
+	file="/tarantool/test_$(subst /,_,${TEST}).log" ; \
 	cd test && /usr/bin/python test-run.py -j 1 ${TEST} \
 		>$$file 2>&1 \
 		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
@@ -122,17 +131,17 @@ test_osx: deps_osx
 
 coverage_ubuntu: deps_ubuntu
 	cmake . -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCOV=ON \
-		>/tmp/cmake.log 2>&1 \
+		>/tarantool/cmake.log 2>&1 \
 		&& echo "CMAKE PASSED" \
-		|| ( echo "CMAKE FAILED" ; cat /tmp/cmake.log ; exit 1 )
+		|| ( echo "CMAKE FAILED" ; cat /tarantool/cmake.log ; exit 1 )
 	make -j \
-		>/tmp/make.log 2>&1 \
+		>/tarantool/make.log 2>&1 \
 		&& echo "MAKE PASSED" \
-		|| ( echo "MAKE FAILED" ; cat /tmp/make.log ; exit 1 )
+		|| ( echo "MAKE FAILED" ; cat /tarantool/make.log ; exit 1 )
 
 run_coverage_ubuntu:
 	# Enable --long tests for coverage
-	file="/tmp/test_$(subst /,_,${TEST}).log" ; \
+	file="/tarantool/test_$(subst /,_,${TEST}).log" ; \
 	cd test && /usr/bin/python test-run.py -j 1 --long ${TEST} \
 		>$$file 2>&1 \
 		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
