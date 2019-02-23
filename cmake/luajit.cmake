@@ -194,31 +194,20 @@ macro(luajit_build)
         endif()
         # Pass deployment target
         if ("${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "")
-            # DARWIN_VERSION <= 10.12 -> CMAKE_OSX_DEPLOYMENT_TARGET = 10.6
-            # DARWIN_VERSION >= 10.13 -> CMAKE_OSX_DEPLOYMENT_TARGET = 10.14
+            # Default to 10.6 since @rpath support is NOT available in
+            # earlier versions, needed by AddressSanitizer.
             execute_process(COMMAND sw_vers -productVersion
                 OUTPUT_VARIABLE PRODUCT_VERSION)
             message(STATUS "PRODUCT_VERSION=${PRODUCT_VERSION}")
-            string(REGEX MATCH "[0-9]+.[0-9]+" DARWIN_VERSION ${PRODUCT_VERSION})
-            message(STATUS "DARWIN_VERSION=${DARWIN_VERSION}")
-            string(REGEX MATCH "^[0-9]+" MAJOR_VERSION ${DARWIN_VERSION})
-            message(STATUS "MAJOR_VERSION=${MAJOR_VERSION}")
-            if (MAJOR_VERSION GREATER 10)
-                set (luajit_osx_deployment_target 10.14)
-            elseif (MAJOR_VERSION LESS 10)
+            if (${PRODUCT_VERSION} VERSION_LESS 10.14)
                 set (luajit_osx_deployment_target 10.6)
-            elseif (MAJOR_VERSION EQUAL 10)
-                string(REGEX MATCH "[0-9]+$" MINOR_VERSION ${DARWIN_VERSION})
-                message(STATUS "MINOR_VERSION=${MINOR_VERSION}")
-                if (MINOR_VERSION GREATER 13)
-                    set (luajit_osx_deployment_target 10.14)
-                else ()
-                    set (luajit_osx_deployment_target 10.6)
-                endif ()
+            else ()
+                set (luajit_osx_deployment_target 10.14)
             endif ()
         else()
             set (luajit_osx_deployment_target ${CMAKE_OSX_DEPLOYMENT_TARGET})
         endif()
+        message(STATUS "LUAJIT_OSX_DEPLOYMENT_TARGET=${luajit_osx_deployment_target}")
         set(luajit_ldflags
             ${luajit_ldflags} -Wl,-macosx_version_min,${luajit_osx_deployment_target})
     endif ()
