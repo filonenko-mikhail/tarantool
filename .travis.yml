@@ -25,7 +25,7 @@ jobs:
         env: TARGET=test
         compiler: clang
       - name: RelWithDebInfoWError build + test (OS X 10.14 Mojave)
-        env: TARGET=test
+        env: TARGET=test MACOSX_DEPLOYMENT_TARGET=10.14
         os: osx
       - name: Debug build + test + coverage (Linux, gcc)
         env: TARGET=coverage
@@ -43,7 +43,7 @@ jobs:
         compiler: clang
       - name: LTO build + test (OS X 10.14 Mojave)
         os: osx
-        env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
+        env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON MACOSX_DEPLOYMENT_TARGET=10.14
         #if: branch = "2.1"
       - name: Create and deploy tarball
         env: TARGET=source
