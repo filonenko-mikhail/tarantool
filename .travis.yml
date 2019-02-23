@@ -24,7 +24,7 @@ jobs:
       - name: RelWithDebInfoWError build + test (Linux, clang)
         env: TARGET=test
         compiler: clang
-      - name: RelWithDebInfoWError build + test (OS X)
+      - name: RelWithDebInfoWError build + test (OS X 10.14 xcode 10.2)
         env: TARGET=test
         os: osx
       - name: Debug build + test + coverage (Linux, gcc)
@@ -33,11 +33,19 @@ jobs:
         env: TARGET=test
         os: osx
         osx_image: xcode10.1
+      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 10 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode10
+      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.4.1 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode9.4
       - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.3 Temporary check)
         env: TARGET=test
         os: osx
         osx_image: xcode9.3
-      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.2 Temporary check)
+      - name: RelWithDebInfoWError build + test (OS X 10.12 xcode 9.2 Temporary check)
         env: TARGET=test
         os: osx
         osx_image: xcode9.2
@@ -45,11 +53,11 @@ jobs:
         env: TARGET=test
         os: osx
         osx_image: xcode9.1
-      - name: RelWithDebInfoWError build + test (OS X 10.12 xcode 9 Temporary check)
+      - name: RelWithDebInfoWError build + test (OS X 10.12 xcode 9.0 Temporary check)
         env: TARGET=test
         os: osx
         osx_image: xcode9
-      - name: RelWithDebInfoWError build + test (OS X 10.11 xcode 8.3 Temporary check)
+      - name: RelWithDebInfoWError build + test (OS X 10.12 xcode 8.3 Temporary check)
         env: TARGET=test
         os: osx
         osx_image: xcode8.3
@@ -68,7 +76,7 @@ jobs:
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
         if: branch = "2.1"
         compiler: clang
-      - name: LTO build + test (OS X 10.13 xcode 9.4)
+      - name: LTO build + test (OS X 10.14 xcode 10.2)
         os: osx
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
         #if: branch = "2.1"
