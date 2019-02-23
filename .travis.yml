@@ -24,7 +24,7 @@ jobs:
       - name: RelWithDebInfoWError build + test (Linux, clang)
         env: TARGET=test
         compiler: clang
-      - name: RelWithDebInfoWError build + test (OS X 10.14 xcode 10.2)
+      - name: RelWithDebInfoWError build + test (OS X 10.14 Mojave)
         env: TARGET=test
         os: osx
       - name: Debug build + test + coverage (Linux, gcc)
@@ -37,10 +37,11 @@ jobs:
         env: TARGET=test
         os: osx
         osx_image: xcode10
-      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.4.1 Temporary check)
+      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.4.1 High Sierra)
         env: TARGET=test
         os: osx
         osx_image: xcode9.4
+        #if: branch = "2.1"
       - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.3 Temporary check)
         env: TARGET=test
         os: osx
@@ -76,7 +77,7 @@ jobs:
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
         if: branch = "2.1"
         compiler: clang
-      - name: LTO build + test (OS X 10.14 xcode 10.2)
+      - name: LTO build + test (OS X 10.14 Mojave)
         os: osx
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
         #if: branch = "2.1"
