@@ -8,7 +8,7 @@ language: cpp
 os: linux
 compiler: gcc
 
-osx_image: xcode10.1
+osx_image: xcode10.2
 
 cache:
     directories:
@@ -27,13 +27,40 @@ jobs:
       - name: RelWithDebInfoWError build + test (OS X)
         env: TARGET=test
         os: osx
-      - name: RelWithDebInfoWError build + test (OS X 9.4)
-        env: TARGET=test
-        os: osx
-        osx_image: xcode9.4
-        if: branch = "2.1"
       - name: Debug build + test + coverage (Linux, gcc)
         env: TARGET=coverage
+      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 10.1 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode10.1
+      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.3 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode9.3
+      - name: RelWithDebInfoWError build + test (OS X 10.13 xcode 9.2 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode9.2
+      - name: RelWithDebInfoWError build + test (OS X 10.12 xcode 9.1 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode9.1
+      - name: RelWithDebInfoWError build + test (OS X 10.12 xcode 9 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode9
+      - name: RelWithDebInfoWError build + test (OS X 10.11 xcode 8.3 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode8.3
+      - name: RelWithDebInfoWError build + test (OS X 10.11 xcode 8 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode8
+      - name: RelWithDebInfoWError build + test (OS X 10.11 xcode 7.3 Temporary check)
+        env: TARGET=test
+        os: osx
+        osx_image: xcode7.3
       - name: LTO build + test (Linux, gcc)
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
         if: branch = "2.1"
@@ -41,10 +68,10 @@ jobs:
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
         if: branch = "2.1"
         compiler: clang
-      - name: LTO build + test (OS X)
+      - name: LTO build + test (OS X 10.13 xcode 9.4)
         os: osx
         env: TARGET=test CMAKE_EXTRA_PARAMS=-DENABLE_LTO=ON
-        if: branch = "2.1"
+        #if: branch = "2.1"
       - name: Create and deploy tarball
         env: TARGET=source
         if: branch = "2.1"

@@ -46,11 +46,11 @@ test_ubuntu: deps_ubuntu
 
 deps_osx:
 	brew update
-	brew install openssl readline curl icu4c --force
-	virtualenv -h >/dev/null 2>&1 || \
-		( pip -h >/dev/null 2>&1 || ( curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | python && pip --version ) && \
-		brew install pyenv-virtualenv --force && \
-		pip install virtualenv )
+	brew install openssl readline curl icu4c pyenv-virtualenv --force
+	#virtualenv -h >/dev/null 2>&1 || \
+	#	( pip -h >/dev/null 2>&1 || ( curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | python && pip --version ) && \
+	#	brew install pyenv-virtualenv --force && \
+	#	pip install virtualenv )
 
 test_osx: deps_osx
 	cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfoWError ${CMAKE_EXTRA_PARAMS}
