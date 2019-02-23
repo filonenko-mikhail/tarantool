@@ -61,7 +61,7 @@ test_osx: deps_osx
 	sudo launchctl limit maxfiles 20480 || :
 	ulimit -S -n 20480 || :
 	ulimit -n
-	make -j8
+	make -j8 || make -j1
 	virtualenv ./test-env && \
 	. ./test-env/bin/activate && \
 	curl --silent --show-error --retry 5 https://bootstrap.pypa.io/get-pip.py | python && \
