@@ -202,9 +202,9 @@ macro(luajit_build)
             if (${PRODUCT_VERSION} VERSION_LESS 10.14)
                 set (luajit_osx_deployment_target 10.6)
             else ()
-                set (luajit_osx_deployment_target 10.13)
+                set (luajit_osx_deployment_target 10.14)
             endif ()
-            set(CMAKE_OSX_DEPLOYMENT_TARGET ${luajit_osx_deployment_target}
+            set(CMAKE_OSX_DEPLOYMENT_TARGET "${luajit_osx_deployment_target}"
 		CACHE STRING "Minimum OS X deployment version")
         else()
             set (luajit_osx_deployment_target ${CMAKE_OSX_DEPLOYMENT_TARGET})
