@@ -536,7 +536,7 @@ struct luaL_iterator;
  * Create a Lua iterator from a gen, param, state triplet.
  *
  * If idx == 0, then three top stack values are used as the
- * triplet.
+ * triplet. Note: they are not popped.
  *
  * Otherwise idx is index on Lua stack points to a
  * {gen, param, state} table.
