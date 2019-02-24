@@ -445,7 +445,7 @@ parser_space_delete(struct sql *db, struct space *space)
  * error message.
  */
 int
-sqlRunParser(Parse * pParse, const char *zSql, char **pzErrMsg)
+sqlRunParser(Parse * pParse, const char *zSql)
 {
 	int nErr = 0;		/* Number of errors encountered */
 	int i;			/* Loop counter */
@@ -463,7 +463,6 @@ sqlRunParser(Parse * pParse, const char *zSql, char **pzErrMsg)
 	pParse->rc = SQL_OK;
 	pParse->zTail = zSql;
 	i = 0;
-	assert(pzErrMsg != 0);
 	/* sqlParserTrace(stdout, "parser: "); */
 	pEngine = sqlParserAlloc(sqlMalloc);
 	if (pEngine == 0) {
@@ -531,22 +530,8 @@ sqlRunParser(Parse * pParse, const char *zSql, char **pzErrMsg)
 	if (db->mallocFailed) {
 		pParse->rc = SQL_NOMEM_BKPT;
 	}
-	if (pParse->rc != SQL_OK && pParse->rc != SQL_DONE
-	    && pParse->zErrMsg == 0) {
-		const char *error;
-		if (is_tarantool_error(pParse->rc) &&
-		    tarantoolErrorMessage() != NULL)
-			error = tarantoolErrorMessage();
-		else
-			error = sqlErrStr(pParse->rc);
-		pParse->zErrMsg = sqlMPrintf(db, "%s", error);
-	}
-	assert(pzErrMsg != 0);
-	if (pParse->zErrMsg) {
-		*pzErrMsg = pParse->zErrMsg;
-		sql_log(pParse->rc, "%s", *pzErrMsg);
+	if (pParse->rc != SQL_OK && pParse->rc != SQL_DONE)
 		nErr++;
-	}
 	if (pParse->pVdbe != NULL && pParse->nErr > 0) {
 		sqlVdbeDelete(pParse->pVdbe);
 		pParse->pVdbe = 0;
@@ -577,11 +562,8 @@ sql_expr_compile(sql *db, const char *expr, int expr_len)
 	}
 	sprintf(stmt, "%s%.*s", outer, expr_len, expr);
 
-	char *sql_error = NULL;
-	if (sqlRunParser(&parser, stmt, &sql_error) != SQL_OK ||
-	    parser.parsed_ast_type != AST_TYPE_EXPR) {
-		diag_set(ClientError, ER_SQL, sql_error);
-	} else {
+	if (sqlRunParser(&parser, stmt) == SQL_OK &&
+	    parser.parsed_ast_type == AST_TYPE_EXPR) {
 		expression = parser.parsed_ast.expr;
 		parser.parsed_ast.expr = NULL;
 	}
@@ -599,8 +581,7 @@ sql_view_compile(struct sql *db, const char *view_stmt)
 
 	struct Select *select = NULL;
 
-	char *unused;
-	if (sqlRunParser(&parser, view_stmt, &unused) != SQL_OK ||
+	if (sqlRunParser(&parser, view_stmt) != SQL_OK ||
 	    parser.parsed_ast_type != AST_TYPE_SELECT) {
 		diag_set(ClientError, ER_SQL_EXECUTE, view_stmt);
 	} else {
@@ -618,13 +599,9 @@ sql_trigger_compile(struct sql *db, const char *sql)
 	struct Parse parser;
 	sql_parser_create(&parser, db);
 	parser.parse_only = true;
-	char *sql_error = NULL;
 	struct sql_trigger *trigger = NULL;
-	if (sqlRunParser(&parser, sql, &sql_error) != SQL_OK ||
-	    parser.parsed_ast_type != AST_TYPE_TRIGGER) {
-	    if (parser.rc != SQL_TARANTOOL_ERROR)
-		diag_set(ClientError, ER_SQL, sql_error);
-	} else {
+	if (sqlRunParser(&parser, sql) == SQL_OK &&
+	    parser.parsed_ast_type == AST_TYPE_TRIGGER) {
 		trigger = parser.parsed_ast.trigger;
 		parser.parsed_ast.trigger = NULL;
 	}

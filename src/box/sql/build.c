@@ -493,16 +493,10 @@ sql_column_add_nullable_action(struct Parse *parser,
 	struct field_def *field = &def->fields[def->field_count - 1];
 	if (field->nullable_action != ON_CONFLICT_ACTION_DEFAULT &&
 	    nullable_action != field->nullable_action) {
-		/* Prevent defining nullable_action many times. */
-		const char *err_msg =
-			tt_sprintf("NULL declaration for column '%s' of table "
-				   "'%s' has been already set to '%s'",
-				   field->name, def->name,
-				   on_conflict_action_strs[field->
-							   nullable_action]);
-		diag_set(ClientError, ER_SQL, err_msg);
-		parser->rc = SQL_TARANTOOL_ERROR;
-		parser->nErr++;
+		sqlErrorMsg(parser, "NULL declaration for column '%s' of "\
+			    "table '%s' has been already set to '%s'",
+			    field->name, def->name,
+			    on_conflict_action_strs[field-> nullable_action]);
 		return;
 	}
 	field->nullable_action = nullable_action;

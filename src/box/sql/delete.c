@@ -94,31 +94,22 @@ sql_table_truncate(struct Parse *parse, struct SrcList *tab_list)
 	struct space *space = space_by_name(tab_name);
 	if (space == NULL) {
 		diag_set(ClientError, ER_NO_SUCH_SPACE, tab_name);
-		goto tarantool_error;
+		sql_parser_error(parse);
 	}
 	if (! rlist_empty(&space->parent_fk_constraint)) {
-		const char *err_msg =
-			tt_sprintf("can not truncate space '%s' because other "
-				   "objects depend on it", space->def->name);
-		diag_set(ClientError, ER_SQL, err_msg);
-		goto tarantool_error;
+		sqlErrorMsg(parse, "can not truncate space '%s' because other "
+			    "objects depend on it", space->def->name);
+		goto cleanup;
 	}
 	if (space->def->opts.is_view) {
-		const char *err_msg =
-			tt_sprintf("can not truncate space '%s' because it is "
-				   "a view", space->def->name);
-		diag_set(ClientError, ER_SQL, err_msg);
-		goto tarantool_error;
+		sqlErrorMsg(parse, "can not truncate space '%s' because it is "
+			    "a view", space->def->name);
+		goto cleanup;
 	}
 	sqlVdbeAddOp2(v, OP_Clear, space->def->id, true);
 cleanup:
 	sqlSrcListDelete(parse->db, tab_list);
 	return;
-
-tarantool_error:
-	parse->rc = SQL_TARANTOOL_ERROR;
-	parse->nErr++;
-	goto cleanup;
 }
 
 void

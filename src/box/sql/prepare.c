@@ -52,7 +52,6 @@ sqlPrepare(sql * db,	/* Database handle. */
 	       const char **pzTail	/* OUT: End of parsed string */
     )
 {
-	char *zErrMsg = 0;	/* Error message */
 	int rc = SQL_OK;	/* Result code */
 	int i;			/* Loop counter */
 	Parse sParse;		/* Parsing context */
@@ -90,14 +89,14 @@ sqlPrepare(sql * db,	/* Database handle. */
 		}
 		zSqlCopy = sqlDbStrNDup(db, zSql, nBytes);
 		if (zSqlCopy) {
-			sqlRunParser(&sParse, zSqlCopy, &zErrMsg);
+			sqlRunParser(&sParse, zSqlCopy);
 			sParse.zTail = &zSql[sParse.zTail - zSqlCopy];
 			sqlDbFree(db, zSqlCopy);
 		} else {
 			sParse.zTail = &zSql[nBytes];
 		}
 	} else {
-		sqlRunParser(&sParse, zSql, &zErrMsg);
+		sqlRunParser(&sParse, zSql);
 	}
 	assert(0 == sParse.nQueryLoop);
 
@@ -146,11 +145,7 @@ sqlPrepare(sql * db,	/* Database handle. */
 		*ppStmt = (sql_stmt *) sParse.pVdbe;
 	}
 
-	if (zErrMsg) {
-		sqlErrorWithMsg(db, rc, "%s", zErrMsg);
-	} else {
-		sqlError(db, rc);
-	}
+	sqlError(db, rc);
 
 	/* Delete any TriggerPrg structures allocated while parsing this statement. */
 	while (sParse.pTriggerPrg) {
@@ -295,7 +290,6 @@ sql_parser_destroy(Parse *parser)
 		db->lookaside.bDisable -= parser->disableLookaside;
 	}
 	parser->disableLookaside = 0;
-	sqlDbFree(db, parser->zErrMsg);
 	switch (parser->parsed_ast_type) {
 	case AST_TYPE_SELECT:
 		sql_select_delete(db, parser->parsed_ast.select);

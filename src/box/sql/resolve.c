@@ -1332,12 +1332,9 @@ resolveSelectStep(Walker * pWalker, Select * p)
 				return WRC_Abort;
 			if ((sNC.ncFlags & NC_HasAgg) == 0 ||
 			    (sNC.ncFlags & NC_HasUnaggregatedId) != 0) {
-				diag_set(ClientError, ER_SQL, "HAVING "
-					 "argument must appear in the GROUP BY "
-					 "clause or be used in an aggregate "
-					 "function");
-				pParse->nErr++;
-				pParse->rc = SQL_TARANTOOL_ERROR;
+				sqlErrorMsg(pParse, "HAVING argument must "\
+					    "appear in the GROUP BY clause or "\
+					    "be used in an aggregate function");
 				return WRC_Abort;
 			}
 			/*

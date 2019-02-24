@@ -730,16 +730,10 @@ onErrorText(int onError)
 static void
 transferParseError(Parse * pTo, Parse * pFrom)
 {
-	assert(pFrom->zErrMsg == 0 || pFrom->nErr);
-	assert(pTo->zErrMsg == 0 || pTo->nErr);
 	if (pTo->nErr == 0) {
-		pTo->zErrMsg = pFrom->zErrMsg;
 		pTo->nErr = pFrom->nErr;
 		pTo->rc = pFrom->rc;
-	} else {
-		sqlDbFree(pFrom->db, pFrom->zErrMsg);
 	}
-	pFrom->zErrMsg = NULL;
 }
 
 /**

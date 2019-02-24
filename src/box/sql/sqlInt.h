@@ -2653,7 +2653,6 @@ struct fk_constraint_parse {
  */
 struct Parse {
 	sql *db;		/* The main database structure */
-	char *zErrMsg;		/* An error message */
 	Vdbe *pVdbe;		/* An engine for executing database bytecode */
 	int rc;			/* Return code from execution */
 	u8 colNamesSet;		/* TRUE after OP_ColumnName has been issued to pVdbe */
@@ -3221,7 +3220,7 @@ void sqlDequote(char *);
 void sqlNormalizeName(char *z);
 void sqlTokenInit(Token *, char *);
 int sqlKeywordCode(const unsigned char *, int);
-int sqlRunParser(Parse *, const char *, char **);
+int sqlRunParser(Parse *, const char *);
 
 /**
  * Increment error counter.

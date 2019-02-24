@@ -1362,13 +1362,8 @@ sql_checks_resolve_space_def_reference(ExprList *expr_list,
 	parser.parse_only = true;
 
 	sql_resolve_self_reference(&parser, def, NC_IsCheck, NULL, expr_list);
-	int rc = 0;
-	if (parser.rc != SQL_OK) {
-		/* Tarantool error may be already set with diag. */
-		if (parser.rc != SQL_TARANTOOL_ERROR)
-			diag_set(ClientError, ER_SQL, parser.zErrMsg);
-		rc = -1;
-	}
+	if (parser.rc != SQL_OK)
+		return -1;
 	sql_parser_destroy(&parser);
-	return rc;
+	return 0;
 }
