@@ -441,7 +441,7 @@ lookupName(Parse * pParse,	/* The parsing context */
 			diag_set(ClientError, ER_NO_SUCH_FIELD_NAME, zCol,
 				 zTab);
 		}
-		sql_parser_error(pParse);
+		pParse->rc = SQL_TARANTOOL_ERROR;
 		pTopNC->nErr++;
 	}
 
@@ -707,7 +707,7 @@ resolveExprStep(Walker * pWalker, Expr * pExpr)
 #endif
 			    ) {
 				diag_set(ClientError, ER_NO_SUCH_FUNCTION, zId);
-				sql_parser_error(pParse);
+				pParse->rc = SQL_TARANTOOL_ERROR;
 				pNC->nErr++;
 			} else if (wrong_num_args) {
 				sqlErrorMsg(pParse,
@@ -809,7 +809,7 @@ resolveExprStep(Walker * pWalker, Expr * pExpr)
 			break;
 		}
 	}
-	return (pParse->nErr
+	return (pParse->rc == SQL_TARANTOOL_ERROR
 		|| pParse->db->mallocFailed) ? WRC_Abort : WRC_Continue;
 }
 
@@ -1195,7 +1195,7 @@ resolveSelectStep(Walker * pWalker, Select * p)
 	 */
 	if ((p->selFlags & SF_Expanded) == 0) {
 		sqlSelectPrep(pParse, p, pOuterNC);
-		return (pParse->nErr
+		return (pParse->rc == SQL_TARANTOOL_ERROR
 			|| db->mallocFailed) ? WRC_Abort : WRC_Prune;
 	}
 
@@ -1252,7 +1252,8 @@ resolveSelectStep(Walker * pWalker, Select * p)
 				sqlResolveSelectNames(pParse,
 							  pItem->pSelect,
 							  pOuterNC);
-				if (pParse->nErr || db->mallocFailed)
+				if (pParse->rc == SQL_TARANTOOL_ERROR ||
+				    db->mallocFailed)
 					return WRC_Abort;
 
 				for (pNC = pOuterNC; pNC; pNC = pNC->pNext)
@@ -1529,7 +1530,7 @@ sqlResolveExprNames(NameContext * pNC,	/* Namespace to resolve expressions in. *
 #if SQL_MAX_EXPR_DEPTH>0
 	pNC->pParse->nHeight -= pExpr->nHeight;
 #endif
-	if (pNC->nErr > 0 || w.pParse->nErr > 0) {
+	if (pNC->nErr > 0 || w.pParse->rc == SQL_TARANTOOL_ERROR) {
 		ExprSetProperty(pExpr, EP_Error);
 	}
 	if (pNC->ncFlags & NC_HasAgg) {

@@ -1473,8 +1473,9 @@ sqlWhereCodeOneLoopStart(WhereInfo * pWInfo,	/* Complete information about the W
 				    sqlWhereBegin(pParse, pOrTab, pOrExpr,
 						      0, 0, wctrlFlags,
 						      iCovCur);
-				assert(pSubWInfo || pParse->nErr
-				       || db->mallocFailed);
+				assert(pSubWInfo ||
+				       pParse->rc == SQL_TARANTOOL_ERROR ||
+				       db->mallocFailed);
 				if (pSubWInfo) {
 					WhereLoop *pSubLoop;
 					int addrExplain =

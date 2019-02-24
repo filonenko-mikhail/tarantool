@@ -1276,7 +1276,6 @@ sql_ephemeral_space_def_new(struct Parse *parser, const char *name)
 		diag_set(OutOfMemory, size, "region_alloc",
 			 "sql_ephemeral_space_def_new");
 		parser->rc = SQL_TARANTOOL_ERROR;
-		parser->nErr++;
 		return NULL;
 	}
 
@@ -1295,7 +1294,6 @@ sql_ephemeral_space_new(Parse *parser, const char *name)
 	if (space == NULL) {
 		diag_set(OutOfMemory, sz, "region", "space");
 		parser->rc = SQL_TARANTOOL_ERROR;
-		parser->nErr++;
 		return NULL;
 	}
 

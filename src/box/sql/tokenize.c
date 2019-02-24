@@ -508,7 +508,7 @@ sqlRunParser(Parse * pParse, const char *zSql)
 				diag_set(ClientError, ER_SQL_UNKNOWN_TOKEN,
 					 pParse->sLastToken.n,
 					 pParse->sLastToken.z);
-				sql_parser_error(pParse);
+				pParse->rc = SQL_TARANTOOL_ERROR;
 				break;
 			}
 		} else {
@@ -532,7 +532,7 @@ sqlRunParser(Parse * pParse, const char *zSql)
 	}
 	if (pParse->rc != SQL_OK && pParse->rc != SQL_DONE)
 		nErr++;
-	if (pParse->pVdbe != NULL && pParse->nErr > 0) {
+	if (pParse->pVdbe != NULL && pParse->rc == SQL_TARANTOOL_ERROR) {
 		sqlVdbeDelete(pParse->pVdbe);
 		pParse->pVdbe = 0;
 	}

@@ -43,7 +43,7 @@ sql_lookup_space(struct Parse *parse, struct SrcList_item *space_name)
 	struct space *space = space_by_name(space_name->zName);
 	if (space == NULL) {
 		diag_set(ClientError, ER_NO_SUCH_SPACE, space_name->zName);
-		sql_parser_error(parse);
+		parse->rc = SQL_TARANTOOL_ERROR;
 		return NULL;
 	}
 	assert(space != NULL);
@@ -51,7 +51,6 @@ sql_lookup_space(struct Parse *parse, struct SrcList_item *space_name)
 		diag_set(ClientError, ER_UNSUPPORTED, "SQL",
 			 "space without format");
 		parse->rc = SQL_TARANTOOL_ERROR;
-		parse->nErr++;
 		return NULL;
 	}
 	space_name->space = space;
@@ -94,7 +93,7 @@ sql_table_truncate(struct Parse *parse, struct SrcList *tab_list)
 	struct space *space = space_by_name(tab_name);
 	if (space == NULL) {
 		diag_set(ClientError, ER_NO_SUCH_SPACE, tab_name);
-		sql_parser_error(parse);
+		parse->rc = SQL_TARANTOOL_ERROR;
 	}
 	if (! rlist_empty(&space->parent_fk_constraint)) {
 		sqlErrorMsg(parse, "can not truncate space '%s' because other "
@@ -117,7 +116,7 @@ sql_table_delete_from(struct Parse *parse, struct SrcList *tab_list,
 		      struct Expr *where)
 {
 	struct sql *db = parse->db;
-	if (parse->nErr || db->mallocFailed)
+	if (parse->rc == SQL_TARANTOOL_ERROR || db->mallocFailed)
 		goto delete_from_cleanup;
 
 	assert(tab_list->nSrc == 1);

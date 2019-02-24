@@ -277,7 +277,7 @@ sqlInsert(Parse * pParse,	/* Parser context */
 
 	db = pParse->db;
 	memset(&dest, 0, sizeof(dest));
-	if (pParse->nErr || db->mallocFailed) {
+	if (pParse->rc == SQL_TARANTOOL_ERROR || db->mallocFailed) {
 		goto insert_cleanup;
 	}
 
@@ -426,7 +426,7 @@ sqlInsert(Parse * pParse,	/* Parser context */
 		dest.nSdst = space_def->field_count;
 		rc = sqlSelect(pParse, pSelect, &dest);
 		regFromSelect = dest.iSdst;
-		if (rc || db->mallocFailed || pParse->nErr)
+		if (rc || db->mallocFailed || pParse->rc == SQL_TARANTOOL_ERROR)
 			goto insert_cleanup;
 		sqlVdbeEndCoroutine(v, regYield);
 		sqlVdbeJumpHere(v, addrTop - 1);	/* label B: */

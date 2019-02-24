@@ -254,10 +254,9 @@ sql_expr_coll(Parse *parse, Expr *p, bool *is_explicit_coll, uint32_t *coll_id,
 					 * several times: this
 					 * function is recursive.
 					 */
-					if (parse->nErr == 0) {
+					if (parse->rc != SQL_TARANTOOL_ERROR) {
 						diag_set(ClientError,
 							 ER_ILLEGAL_COLLATION_MIX);
-						parse->nErr++;
 						parse->rc = SQL_TARANTOOL_ERROR;
 					}
 					return -1;
@@ -411,7 +410,6 @@ sql_binary_compare_coll_seq(Parse *parser, Expr *left, Expr *right,
 	if (collations_check_compatibility(lhs_coll_id, is_lhs_forced,
 					   rhs_coll_id, is_rhs_forced, id) != 0) {
 		parser->rc = SQL_TARANTOOL_ERROR;
-		parser->nErr++;
 		return -1;
 	}
 	return 0;
@@ -821,7 +819,7 @@ exprSetHeight(Expr * p)
 void
 sqlExprSetHeightAndFlags(Parse * pParse, Expr * p)
 {
-	if (pParse->nErr)
+	if (pParse->rc == SQL_TARANTOOL_ERROR)
 		return;
 	exprSetHeight(p);
 	sqlExprCheckHeight(pParse, p->nHeight);
@@ -1005,7 +1003,7 @@ sqlPExpr(Parse * pParse,	/* Parsing context */
     )
 {
 	Expr *p;
-	if (op == TK_AND && pParse->nErr == 0) {
+	if (op == TK_AND && pParse->rc != SQL_TARANTOOL_ERROR) {
 		/* Take advantage of short-circuit false optimization for AND */
 		p = sqlExprAnd(pParse->db, pLeft, pRight);
 	} else {
@@ -2407,7 +2405,8 @@ sqlFindInIndex(Parse * pParse,	/* Parsing context */
 	 * satisfy the query.  This is preferable to generating a new
 	 * ephemeral table.
 	 */
-	if (pParse->nErr == 0 && (p = isCandidateForInOpt(pX)) != 0) {
+	if (pParse->rc != SQL_TARANTOOL_ERROR &&
+	    (p = isCandidateForInOpt(pX)) != 0) {
 		sql *db = pParse->db;	/* Database connection */
 		ExprList *pEList = p->pEList;
 		int nExpr = pEList->nExpr;
@@ -3041,8 +3040,9 @@ sqlExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 				   destIfFalse == destIfNull ? 0 : &rRhsHasNull,
 				   aiMap, 0);
 
-	assert(pParse->nErr || nVector == 1 || eType == IN_INDEX_EPH
-	       || eType == IN_INDEX_INDEX_ASC || eType == IN_INDEX_INDEX_DESC);
+	assert(pParse->rc == SQL_TARANTOOL_ERROR || nVector == 1 ||
+	       eType == IN_INDEX_EPH || eType == IN_INDEX_INDEX_ASC ||
+	       eType == IN_INDEX_INDEX_DESC);
 #ifdef SQL_DEBUG
 	/* Confirm that aiMap[] contains nVector integer values between 0 and
 	 * nVector-1.
@@ -3364,7 +3364,8 @@ sqlExprCacheStore(Parse * pParse, int iTab, int iCol, int iReg)
 	struct yColCache *p;
 
 	/* Unless an error has occurred, register numbers are always positive. */
-	assert(iReg > 0 || pParse->nErr || pParse->db->mallocFailed);
+	assert(iReg > 0 || pParse->rc == SQL_TARANTOOL_ERROR ||
+	       pParse->db->mallocFailed);
 	assert(iCol >= -1 && iCol < 32768);	/* Finite column numbers */
 
 	/* The SQL_ColumnCache flag disables the column cache.  This is used
@@ -3997,7 +3998,7 @@ sqlExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			if (pDef == 0 || pDef->xFinalize != 0) {
 				diag_set(ClientError, ER_NO_SUCH_FUNCTION,
 					 zId);
-				sql_parser_error(pParse);
+				pParse->rc = SQL_TARANTOOL_ERROR;
 				break;
 			}
 
@@ -4341,8 +4342,9 @@ sqlExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			} else {
 				sqlVdbeAddOp2(v, OP_Null, 0, target);
 			}
-			assert(pParse->db->mallocFailed || pParse->nErr > 0
-			       || pParse->iCacheLevel == iCacheLevel);
+			assert(pParse->db->mallocFailed ||
+			       pParse->rc == SQL_TARANTOOL_ERROR ||
+			       pParse->iCacheLevel == iCacheLevel);
 			sqlVdbeResolveLabel(v, endLabel);
 			break;
 		}

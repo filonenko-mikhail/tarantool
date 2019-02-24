@@ -196,13 +196,13 @@ sqlSelectNew(Parse * pParse,	/* Parsing context */
 	pNew->pLimit = pLimit;
 	pNew->pOffset = pOffset;
 	pNew->pWith = 0;
-	assert(pOffset == 0 || pLimit != 0 || pParse->nErr > 0
+	assert(pOffset == 0 || pLimit != 0 || pParse->rc == SQL_TARANTOOL_ERROR
 	       || db->mallocFailed != 0);
 	if (db->mallocFailed) {
 		clearSelect(db, pNew, pNew != &standin);
 		pNew = 0;
 	} else {
-		assert(pNew->pSrc != 0 || pParse->nErr > 0);
+		assert(pNew->pSrc != 0 || pParse->rc == SQL_TARANTOOL_ERROR);
 	}
 	assert(pNew != &standin);
 	return pNew;
@@ -2003,7 +2003,7 @@ sqlResultSetOfSelect(Parse * pParse, Select * pSelect)
 	user_session->sql_flags |= ~SQL_FullColNames;
 	user_session->sql_flags &= SQL_ShortColNames;
 	sqlSelectPrep(pParse, pSelect, 0);
-	if (pParse->nErr)
+	if (pParse->rc == SQL_TARANTOOL_ERROR)
 		return NULL;
 	while (pSelect->pPrior)
 		pSelect = pSelect->pPrior;
@@ -2094,7 +2094,7 @@ computeLimitRegisters(Parse * pParse, Select * p, int iBreak)
 		   (p->pOffset->flags & EP_Collate) != 0)) {
 			diag_set(ClientError, ER_SQL_SYNTAX_NEAR,
 				 sizeof("COLLATE"), "COLLATE");
-			sql_parser_error(pParse);
+			pParse->rc = SQL_TARANTOOL_ERROR;
 			return;
 		}
 		p->iLimit = iLimit = ++pParse->nMem;
@@ -2236,7 +2236,6 @@ multi_select_coll_seq_r(struct Parse *parser, struct Select *p, int n,
 					   current_coll_id, is_current_forced,
 					   &res_coll_id) != 0) {
 		parser->rc = SQL_TARANTOOL_ERROR;
-		parser->nErr++;
 		return 0;
 	}
 	*is_forced_coll = (is_prior_forced || is_current_forced);
@@ -3115,7 +3114,8 @@ generateOutputSubroutine(struct Parse *parse, struct Select *p,
 		 * of the scan loop.
 		 */
 	case SRT_Mem:{
-			assert(in->nSdst == 1 || parse->nErr > 0);
+			assert(in->nSdst == 1 ||
+			       parse->rc == SQL_TARANTOOL_ERROR);
 			testcase(in->nSdst != 1);
 			sqlExprCodeMove(parse, in->iSdst, dest->iSDParm,
 					    1);
@@ -3585,7 +3585,7 @@ multiSelectOrderBy(Parse * pParse,	/* Parsing context */
   *** subqueries ***
   */
 	explainComposite(pParse, p->op, iSub1, iSub2, 0);
-	return pParse->nErr != 0;
+	return pParse->rc == SQL_TARANTOOL_ERROR;
 }
 #endif
 
@@ -4428,7 +4428,7 @@ sqlIndexedByLookup(Parse * pParse, struct SrcList_item *pFrom)
 		if (idx == NULL) {
 			diag_set(ClientError, ER_NO_SUCH_INDEX_NAME,
 				 zIndexedBy, space->def->name);
-			sql_parser_error(pParse);
+			pParse->rc = SQL_TARANTOOL_ERROR;
 			return SQL_ERROR;
 		}
 		pFrom->pIBIndex = idx->def;
@@ -5055,7 +5055,7 @@ selectExpander(Walker * pWalker, Select * p)
 						diag_set(ClientError,
 							 ER_SQL_SELECT_WILDCARD);
 					}
-					sql_parser_error(pParse);
+					pParse->rc = SQL_TARANTOOL_ERROR;
 				}
 			}
 		}
@@ -5097,7 +5097,7 @@ sqlExprWalkNoop(Walker * NotUsed, Expr * NotUsed2)
  * name resolution is performed.
  *
  * If anything goes wrong, an error message is written into pParse.
- * The calling function can detect the problem by looking at pParse->nErr
+ * The calling function can detect the problem by looking at pParse->rc
  * and/or pParse->db->mallocFailed.
  */
 static void
@@ -5206,10 +5206,10 @@ sqlSelectPrep(Parse * pParse,	/* The parser context */
 	if (p->selFlags & SF_HasTypeInfo)
 		return;
 	sqlSelectExpand(pParse, p);
-	if (pParse->nErr || db->mallocFailed)
+	if (pParse->rc == SQL_TARANTOOL_ERROR || db->mallocFailed)
 		return;
 	sqlResolveSelectNames(pParse, p, pOuterNC);
-	if (pParse->nErr || db->mallocFailed)
+	if (pParse->rc == SQL_TARANTOOL_ERROR || db->mallocFailed)
 		return;
 	sqlSelectAddTypeInfo(pParse, p);
 }
@@ -5464,7 +5464,7 @@ sqlSelect(Parse * pParse,		/* The parser context */
 	pParse->iSelectId = pParse->iNextSelectId++;
 
 	db = pParse->db;
-	if (p == 0 || db->mallocFailed || pParse->nErr) {
+	if (p == 0 || db->mallocFailed || pParse->rc == SQL_TARANTOOL_ERROR) {
 		return 1;
 	}
 	memset(&sAggInfo, 0, sizeof(sAggInfo));
@@ -5499,7 +5499,7 @@ sqlSelect(Parse * pParse,		/* The parser context */
 	memset(&sSort, 0, sizeof(sSort));
 	sSort.pOrderBy = p->pOrderBy;
 	pTabList = p->pSrc;
-	if (pParse->nErr || db->mallocFailed) {
+	if (pParse->rc == SQL_TARANTOOL_ERROR || db->mallocFailed) {
 		goto select_end;
 	}
 	assert(p->pEList != 0);
@@ -6393,7 +6393,7 @@ sqlSelect(Parse * pParse,		/* The parser context */
 	/* The SELECT has been coded. If there is an error in the Parse structure,
 	 * set the return code to 1. Otherwise 0.
 	 */
-	rc = (pParse->nErr > 0);
+	rc = (pParse->rc == SQL_TARANTOOL_ERROR);
 
 	/* Control jumps to here if an error is encountered above, or upon
 	 * successful coding of the SELECT.

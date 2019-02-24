@@ -155,7 +155,6 @@ sql_trigger_begin(struct Parse *parse, struct Token *name, int tr_tm,
 
 set_tarantool_error_and_cleanup:
 	parse->rc = SQL_TARANTOOL_ERROR;
-	parse->nErr++;
 	goto trigger_cleanup;
 }
 
@@ -169,7 +168,7 @@ sql_trigger_finish(struct Parse *parse, struct TriggerStep *step_list,
 	struct sql *db = parse->db;
 
 	parse->parsed_ast.trigger = NULL;
-	if (NEVER(parse->nErr) || trigger == NULL)
+	if (NEVER(parse->rc == SQL_TARANTOOL_ERROR) || trigger == NULL)
 		goto cleanup;
 	char *trigger_name = trigger->zName;
 	trigger->step_list = step_list;
@@ -722,20 +721,6 @@ onErrorText(int onError)
 }
 #endif
 
-/*
- * Parse context structure pFrom has just been used to create a sub-vdbe
- * (trigger program). If an error has occurred, transfer error information
- * from pFrom to pTo.
- */
-static void
-transferParseError(Parse * pTo, Parse * pFrom)
-{
-	if (pTo->nErr == 0) {
-		pTo->nErr = pFrom->nErr;
-		pTo->rc = pFrom->rc;
-	}
-}
-
 /**
  * Create and populate a new TriggerPrg object with a sub-program
  * implementing trigger pTrigger with ON CONFLICT policy orconf.
@@ -844,7 +829,7 @@ sql_row_trigger_program(struct Parse *parser, struct sql_trigger *trigger,
 		VdbeComment((v, "End: %s.%s", trigger->zName,
 			     onErrorText(orconf)));
 
-		transferParseError(parser, pSubParse);
+		parser->rc = pSubParse->rc;
 		if (db->mallocFailed == 0) {
 			pProgram->aOp =
 			    sqlVdbeTakeOpArray(v, &pProgram->nOp,
@@ -918,7 +903,7 @@ vdbe_code_row_trigger_direct(struct Parse *parser, struct sql_trigger *trigger,
 	struct Vdbe *v = sqlGetVdbe(parser);
 
 	TriggerPrg *pPrg = sql_row_trigger(parser, trigger, space, orconf);
-	assert(pPrg != NULL || parser->nErr != 0 ||
+	assert(pPrg != NULL || parser->rc == SQL_TARANTOOL_ERROR ||
 	       parser->db->mallocFailed != 0);
 
 	/*

@@ -238,15 +238,7 @@ sqlErrorMsg(Parse * pParse, const char *zFormat, ...)
 	va_end(ap);
 	diag_set(ClientError, ER_SQL_PARSER_GENERIC, zMsg);
 	sqlDbFree(db, zMsg);
-	pParse->nErr++;
 	pParse->rc = SQL_TARANTOOL_ERROR;
-}
-
-void
-sql_parser_error(struct Parse *parse_context)
-{
-	parse_context->nErr++;
-	parse_context->rc = SQL_TARANTOOL_ERROR;
 }
 
 /*

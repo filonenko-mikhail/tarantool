@@ -469,7 +469,7 @@ sqlPragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 	pPragma = pragmaLocate(zLeft);
 	if (pPragma == 0) {
 		diag_set(ClientError, ER_SQL_NO_SUCH_PRAGMA, zLeft);
-		sql_parser_error(pParse);
+		pParse->rc = SQL_TARANTOOL_ERROR;
 		goto pragma_out;
 	}
 	/* Register the result column names for pragmas that return results */
@@ -537,7 +537,6 @@ sqlPragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 		iter = box_index_iterator(space->def->id, 0,ITER_ALL, key_buf, key_end);
 		if (iter == NULL) {
 			pParse->rc = SQL_TARANTOOL_ERROR;
-			pParse->nErr++;
 			goto pragma_out;
 		}
 		int rc = box_iterator_next(iter, &tuple);
@@ -623,12 +622,10 @@ sqlPragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 			diag_set(ClientError, ER_ILLEGAL_PARAMS,
 				 "string value is expected");
 			pParse->rc = SQL_TARANTOOL_ERROR;
-			pParse->nErr++;
 			goto pragma_out;
 		}
 		if (sql_default_engine_set(zRight) != 0) {
 			pParse->rc = SQL_TARANTOOL_ERROR;
-			pParse->nErr++;
 			goto pragma_out;
 		}
 		sqlVdbeAddOp0(v, OP_Expire);
