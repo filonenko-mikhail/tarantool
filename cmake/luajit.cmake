@@ -196,10 +196,20 @@ macro(luajit_build)
         if ("${CMAKE_OSX_DEPLOYMENT_TARGET}" STREQUAL "")
             # Default to 10.6 since @rpath support is NOT available in
             # earlier versions, needed by AddressSanitizer.
-            set (luajit_osx_deployment_target 10.6)
+            execute_process(COMMAND sw_vers -productVersion
+                OUTPUT_VARIABLE PRODUCT_VERSION)
+            message(STATUS "PRODUCT_VERSION=${PRODUCT_VERSION}")
+            if (${PRODUCT_VERSION} VERSION_LESS 10.14)
+                set (luajit_osx_deployment_target 10.6)
+            else ()
+                set (luajit_osx_deployment_target 10.14)
+            endif ()
+            set(CMAKE_OSX_DEPLOYMENT_TARGET "${luajit_osx_deployment_target}"
+		CACHE STRING "Minimum OS X deployment version")
         else()
             set (luajit_osx_deployment_target ${CMAKE_OSX_DEPLOYMENT_TARGET})
         endif()
+        message(STATUS "LUAJIT_OSX_DEPLOYMENT_TARGET=${luajit_osx_deployment_target}")
         set(luajit_ldflags
             ${luajit_ldflags} -Wl,-macosx_version_min,${luajit_osx_deployment_target})
     endif ()
