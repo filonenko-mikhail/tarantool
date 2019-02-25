@@ -23,15 +23,11 @@ docker_common:
 	docker run \
 		--tty=true \
 		--volume "${PWD}:/tarantool" \
-		--volume "${HOME}/.cache:/cache" \
-		--workdir /tarantool \
 		--name built_container_${TRAVIS_JOB_ID} \
-		-e XDG_CACHE_HOME=/cache \
-		-e CCACHE_DIR=/cache/ccache \
 		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE} \
-		/bin/bash -c "make -f .travis.mk $(subst docker_,,${TYPE}) || exit 1"
+		/bin/bash -c "cp -rfp /tarantool /tarantool_ws && cd /tarantool_ws && make -f .travis.mk $(subst docker_,,${TYPE}) || exit 1"
 	docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}_tmp
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
 	docker rm -f built_container_${TRAVIS_JOB_ID}
@@ -45,10 +41,7 @@ docker_common:
 			docker run \
 				--rm=true --tty=true \
 				--volume "${PWD}:/tarantool" \
-				--volume "${HOME}/.cache:/cache" \
-				--workdir /tarantool \
-				-e XDG_CACHE_HOME=/cache \
-				-e CCACHE_DIR=/cache/ccache \
+				--workdir /tarantool_ws \
 				-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
@@ -102,12 +95,13 @@ test_ubuntu: deps_ubuntu
 		|| ( echo "MAKE FAILED" ; cat /tarantool/make.log ; exit 1 )
 
 run_test_ubuntu:
-	file="/tarantool/test_$(subst /,_,${TEST}).log" ; \
+	file="test_$(subst /,_,${TEST}).log" ; \
+	sfile="/tarantool_ws/$$file" ; \
 	cd test && /usr/bin/python test-run.py -j 1 ${TEST} \
 		>$$file 2>&1 \
-		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
-		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
-
+		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$sfile | grep -v Statistics ) \
+		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; cp -f $$sfile /tarantool/. ; exit 1 )
+        
 deps_osx:
 	brew update
 	brew install openssl readline curl icu4c --force
