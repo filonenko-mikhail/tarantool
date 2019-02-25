@@ -159,7 +159,7 @@ run_coverage_ubuntu:
 	sfile="/tarantool_ws/$$file" ; \
 	cd test && /usr/bin/python test-run.py -j 1 --long ${TEST} \
 		>$$file 2>&1 \
-		&& ( rsync -aunv /tarantool_ws /tarantool \
+		&& ( rsync -aunv /tarantool_ws /tarantool >/dev/null 2>&1 ; \
 			echo "TEST(${TEST}) PASSED" ; \
 			grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; \
