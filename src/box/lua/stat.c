@@ -50,6 +50,7 @@ extern struct rmean *rmean_box;
 extern struct rmean *rmean_error;
 /** network statistics (iproto & cbus) */
 extern struct rmean *rmean_net;
+extern struct rmean *rmean_connections;
 extern struct rmean *rmean_tx_wal_bus;
 
 static void
@@ -79,6 +80,29 @@ set_stat_item(const char *name, int rps, int64_t total, void *cb_ctx)
 	return 0;
 }
 
+static void
+fill_conn_item(struct lua_State *L, int64_t total)
+{
+	lua_pushstring(L, "total");
+	lua_pushnumber(L, total);
+	lua_settable(L, -3);
+}
+
+static int
+set_conn_item(const char *name, int rps, int64_t total, void *cb_ctx)
+{
+	struct lua_State *L = (struct lua_State *) cb_ctx;
+
+	lua_pushstring(L, name);
+	lua_newtable(L);
+
+	fill_conn_item(L, total);
+
+	lua_settable(L, -3);
+
+	return rps - rps;
+}
+
 /**
  * A stat_foreach() callback used to handle access to e.g.
  * box.stats.DELETE.
@@ -92,6 +116,19 @@ seek_stat_item(const char *name, int rps, int64_t total, void *cb_ctx)
 
 	lua_newtable(L);
 	fill_stat_item(L, rps, total);
+
+	return 1;
+}
+
+static int
+seek_conn_item(const char *name, int rps, int64_t total, void *cb_ctx)
+{
+	struct lua_State *L = (struct lua_State *) cb_ctx;
+	if (strcmp(name, lua_tostring(L, -1)) != 0)
+		return rps - rps;
+
+	lua_newtable(L);
+	fill_conn_item(L, total);
 
 	return 1;
 }
@@ -140,7 +177,11 @@ static int
 lbox_stat_net_index(struct lua_State *L)
 {
 	luaL_checkstring(L, -1);
-	return rmean_foreach(rmean_net, seek_stat_item, L);
+	if (rmean_foreach(rmean_net, seek_stat_item, L) == 1)
+		return 1;
+	if (rmean_foreach(rmean_connections, seek_conn_item, L) == 1)
+		return 1;
+	return 0;
 }
 
 static int
@@ -148,6 +189,7 @@ lbox_stat_net_call(struct lua_State *L)
 {
 	lua_newtable(L);
 	rmean_foreach(rmean_net, set_stat_item, L);
+	rmean_foreach(rmean_connections, set_conn_item, L);
 	return 1;
 }
 

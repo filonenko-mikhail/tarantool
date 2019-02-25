@@ -263,14 +263,20 @@ static struct cord net_cord;
 static struct slab_cache net_slabc;
 
 struct rmean *rmean_net;
+struct rmean *rmean_connections;
 
 enum rmean_net_name {
 	IPROTO_SENT,
 	IPROTO_RECEIVED,
 	IPROTO_LAST,
 };
+enum rmean_connection_name {
+    IPROTO_CONNECTIONS,
+    IPROTO_CONNECTIONS_LAST,
+};
 
 const char *rmean_net_strings[IPROTO_LAST] = { "SENT", "RECEIVED" };
+const char *rmean_connection_strings[IPROTO_CONNECTIONS_LAST] = { "CONNECTIONS" };
 
 static void
 tx_process_destroy(struct cmsg *m);
@@ -579,6 +585,8 @@ iproto_connection_close(struct iproto_connection *con)
 		/* Make evio_has_fd() happy */
 		con->input.fd = con->output.fd = -1;
 		close(fd);
+		/* Count statistics */
+		rmean_collect(rmean_connections, IPROTO_CONNECTIONS, -1);
 		/*
 		 * Discard unparsed data, to recycle the
 		 * connection in net_send_msg() as soon as all
@@ -1858,6 +1866,8 @@ iproto_on_accept(struct evio_service * /* service */, int fd,
 	struct iproto_connection *con = iproto_connection_new(fd);
 	if (con == NULL)
 		return -1;
+	/* Count statistics */
+	rmean_collect(rmean_connections, IPROTO_CONNECTIONS, 1);
 	/*
 	 * Ignore msg allocation failure - the queue size is
 	 * fixed so there is a limited number of msgs in
@@ -1894,10 +1904,11 @@ net_cord_f(va_list /* ap */)
 			  iproto_on_accept, NULL);
 
 
-	/* Init statistics counter */
+	/* Init statistics counters */
 	rmean_net = rmean_new(rmean_net_strings, IPROTO_LAST);
+	rmean_connections = rmean_new(rmean_connection_strings, IPROTO_CONNECTIONS_LAST);
 
-	if (rmean_net == NULL) {
+	if (rmean_net == NULL or rmean_connections == NULL) {
 		tnt_raise(OutOfMemory, sizeof(struct rmean),
 			  "rmean", "struct rmean");
 	}
@@ -1921,6 +1932,7 @@ net_cord_f(va_list /* ap */)
 		evio_service_stop(&binary);
 
 	rmean_delete(rmean_net);
+	rmean_delete(rmean_connections);
 	return 0;
 }
 
@@ -2125,6 +2137,7 @@ void
 iproto_reset_stat(void)
 {
 	rmean_cleanup(rmean_net);
+	rmean_cleanup(rmean_connections);
 }
 
 void
