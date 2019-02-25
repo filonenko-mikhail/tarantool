@@ -110,8 +110,6 @@ struct merger_source_vtab {
 struct merger_source {
 	/* Source-specific methods. */
 	struct merger_source_vtab *vtab;
-	/* How huch tuples were used from this source. */
-	uint32_t processed;
 	/* Next tuple. */
 	struct tuple *tuple;
 	/*
@@ -312,10 +310,10 @@ lbox_merger_source_gc(struct lua_State *L)
 struct merger_source_buffer {
 	struct merger_source base;
 	/*
-	 * A reference to a Lua function to fetch a next chunk of
+	 * A reference to a Lua iterator to fetch a next chunk of
 	 * tuples.
 	 */
-	int fetch_ref;
+	struct luaL_iterator *fetch_it;
 	/*
 	 * A reference a buffer with a current chunk of tuples.
 	 * It is needed to prevent LuaJIT from collecting the
@@ -347,10 +345,12 @@ luaL_merger_source_buffer_next(struct merger_source *base,
 /**
  * Create a new merger source of the buffer type.
  *
+ * Reads gen, param, state from the top of a Lua stack.
+ *
  * In case of an error it returns NULL and sets a diag.
  */
 static struct merger_source *
-luaL_merger_source_buffer_new(struct lua_State *L, int fetch_idx)
+luaL_merger_source_buffer_new(struct lua_State *L)
 {
 	static struct merger_source_vtab merger_source_buffer_vtab = {
 		.delete = luaL_merger_source_buffer_delete,
@@ -366,13 +366,11 @@ luaL_merger_source_buffer_new(struct lua_State *L, int fetch_idx)
 		return NULL;
 	}
 
-	source->base.processed = 0;
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
 	source->base.refs = 0;
 
-	lua_pushvalue(L, fetch_idx); /* Popped by luaL_ref(). */
-	source->fetch_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	source->fetch_it = luaL_iterator_new(L, 0);
 
 	source->ref = 0;
 	source->buf = NULL;
@@ -389,33 +387,31 @@ luaL_merger_source_buffer_new(struct lua_State *L, int fetch_idx)
  * Return 0 at success and -1 at error and set a diag.
  */
 static int
-luaL_merger_source_buffer_fetch(struct merger_source_buffer *source,
-				struct tuple *last_tuple)
+luaL_merger_source_buffer_fetch(struct merger_source_buffer *source)
 {
 	struct lua_State *L = fiber()->storage.lua.stack;
-	/* Push fetch callback. */
-	lua_rawgeti(L, LUA_REGISTRYINDEX, source->fetch_ref);
-	/* Push last_tuple, processed. */
-	if (last_tuple == NULL)
-		lua_pushnil(L);
-	else
-		luaT_pushtuple(L, last_tuple);
-	lua_pushinteger(L, source->base.processed);
-	/* Invoke the callback and process data. */
-	if (luaT_call(L, 2, 1) != 0)
-		return -1;
+	int nresult = luaL_iterator_next(L, source->fetch_it);
+
 	/* No more data: do nothing. */
-	if (lua_isnil(L, -1)) {
-		lua_pop(L, 1);
+	if (nresult == 0)
 		return 0;
+
+	/* Handle incorrect results count. */
+	if (nresult != 2) {
+		diag_set(IllegalParams, "Expected <state>, <buffer>, got %d "
+			 "return values", nresult);
+		return -1;
 	}
+
+	/* Set a new buffer as the current chunk. */
 	if (source->ref > 0)
 		luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
-	lua_pushvalue(L, -1); /* Popped by luaL_ref(). */
+	lua_pushvalue(L, -nresult + 1); /* Popped by luaL_ref(). */
 	source->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	source->buf = check_ibuf(L, -1);
 	assert(source->buf != NULL);
-	lua_pop(L, 1);
+	lua_pop(L, nresult);
+
 	/* Update remaining_tuples_cnt and skip the header. */
 	if (decode_header(source->buf, &source->remaining_tuples_cnt) != 0) {
 		diag_set(IllegalParams, "Invalid merger source %p",
@@ -433,8 +429,8 @@ luaL_merger_source_buffer_delete(struct merger_source *base)
 	struct merger_source_buffer *source = container_of(base,
 		struct merger_source_buffer, base);
 
-	assert(source->fetch_ref > 0);
-	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->fetch_ref);
+	assert(source->fetch_it != NULL);
+	luaL_iterator_delete(source->fetch_it);
 
 	if (source->ref > 0)
 		luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->ref);
@@ -452,7 +448,6 @@ luaL_merger_source_buffer_next(struct merger_source *base,
 	struct merger_source_buffer *source = container_of(base,
 		struct merger_source_buffer, base);
 
-	struct tuple *last_tuple = base->tuple;
 	base->tuple = NULL;
 
 	/*
@@ -460,7 +455,7 @@ luaL_merger_source_buffer_next(struct merger_source *base,
 	 * ask more and stop if no data arrived.
 	 */
 	if (source->remaining_tuples_cnt == 0) {
-		int rc = luaL_merger_source_buffer_fetch(source, last_tuple);
+		int rc = luaL_merger_source_buffer_fetch(source);
 		if (rc != 0)
 			return -1;
 		if (source->remaining_tuples_cnt == 0)
@@ -491,7 +486,6 @@ luaL_merger_source_buffer_next(struct merger_source *base,
 		diag_set(IllegalParams, "Unexpected msgpack buffer end");
 		return -1;
 	}
-	++base->processed;
 	source->buf->rpos = (char *) tuple_end;
 	base->tuple = box_tuple_new(format, tuple_beg, tuple_end);
 	if (base->tuple == NULL)
@@ -510,10 +504,18 @@ static int
 lbox_merger_new_buffer_source(struct lua_State *L)
 {
 	const char *func_name = "merger.new_buffer_source";
-	if (lua_gettop(L) != 1 || !luaL_iscallable(L, 1))
-		return luaL_error(L, "Usage: %s(<function>)", func_name);
+	int top = lua_gettop(L);
+	if (top < 1 || top > 3 || !luaL_iscallable(L, 1))
+		return luaL_error(L, "Usage: %s(gen, param, state)", func_name);
 
-	struct merger_source *base = luaL_merger_source_buffer_new(L, 1);
+	/*
+	 * luaL_merger_source_buffer_new() reads exactly three top
+	 * values.
+	 */
+	while (lua_gettop(L) < 3)
+		lua_pushnil(L);
+
+	struct merger_source *base = luaL_merger_source_buffer_new(L);
 	if (base == NULL)
 		return luaT_error(L);
 	merger_source_ref(base);
@@ -533,10 +535,10 @@ lbox_merger_new_buffer_source(struct lua_State *L)
 struct merger_source_table {
 	struct merger_source base;
 	/*
-	 * A reference to a Lua function to fetch a next chunk of
+	 * A reference to a Lua iterator to fetch a next chunk of
 	 * tuples.
 	 */
-	int fetch_ref;
+	struct luaL_iterator *fetch_it;
 	/*
 	 * A reference to a table with a current chunk of tuples.
 	 */
@@ -561,7 +563,7 @@ luaL_merger_source_table_next(struct merger_source *base,
  * In case of an error it returns NULL and set a diag.
  */
 static struct merger_source *
-luaL_merger_source_table_new(struct lua_State *L, int fetch_idx)
+luaL_merger_source_table_new(struct lua_State *L)
 {
 	static struct merger_source_vtab merger_source_table_vtab = {
 		.delete = luaL_merger_source_table_delete,
@@ -577,13 +579,11 @@ luaL_merger_source_table_new(struct lua_State *L, int fetch_idx)
 		return NULL;
 	}
 
-	source->base.processed = 0;
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
 	source->base.refs = 0;
 
-	lua_pushvalue(L, fetch_idx); /* Popped by luaL_ref(). */
-	source->fetch_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	source->fetch_it = luaL_iterator_new(L, 0);
 
 	source->ref = 0;
 	source->next_idx = 1;
@@ -598,31 +598,30 @@ luaL_merger_source_table_new(struct lua_State *L, int fetch_idx)
  * Return 0 at success and -1 at error (set a diag).
  */
 static int
-luaL_merger_source_table_fetch(struct merger_source_table *source,
-			       struct tuple *last_tuple)
+luaL_merger_source_table_fetch(struct merger_source_table *source)
 {
 	struct lua_State *L = fiber()->storage.lua.stack;
-	/* Push fetch callback. */
-	lua_rawgeti(L, LUA_REGISTRYINDEX, source->fetch_ref);
-	/* Push last_tuple, processed. */
-	if (last_tuple == NULL)
-		lua_pushnil(L);
-	else
-		luaT_pushtuple(L, last_tuple);
-	lua_pushinteger(L, source->base.processed);
-	/* Invoke the callback and process data. */
-	if (luaT_call(L, 2, 1) != 0)
-		return -1;
+	int nresult = luaL_iterator_next(L, source->fetch_it);
+
 	/* No more data: do nothing. */
-	if (lua_isnil(L, -1)) {
-		lua_pop(L, 1);
+	if (nresult == 0)
 		return 0;
+
+	/* Handle incorrect results count. */
+	if (nresult != 2) {
+		diag_set(IllegalParams, "Expected <state>, <table>, got %d "
+			 "return values", nresult);
+		return -1;
 	}
-	/* Set the new table as the source. */
+
+	/* Set a new table as the current chunk. */
 	if (source->ref > 0)
 		luaL_unref(L, LUA_REGISTRYINDEX, source->ref);
+	lua_pushvalue(L, -nresult + 1); /* Popped by luaL_ref(). */
 	source->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	source->next_idx = 1;
+	lua_pop(L, nresult);
+
 	return 0;
 }
 
@@ -634,8 +633,8 @@ luaL_merger_source_table_delete(struct merger_source *base)
 	struct merger_source_table *source = container_of(base,
 		struct merger_source_table, base);
 
-	assert(source->fetch_ref > 0);
-	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->fetch_ref);
+	assert(source->fetch_it != NULL);
+	luaL_iterator_delete(source->fetch_it);
 
 	if (source->ref > 0)
 		luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->ref);
@@ -654,7 +653,6 @@ luaL_merger_source_table_next(struct merger_source *base,
 	struct merger_source_table *source = container_of(base,
 		struct merger_source_table, base);
 
-	struct tuple *last_tuple = base->tuple;
 	base->tuple = NULL;
 
 	if (source->ref > 0) {
@@ -668,7 +666,7 @@ luaL_merger_source_table_next(struct merger_source *base,
 	if (source->ref == 0 || lua_isnil(L, -1)) {
 		if (source->ref > 0)
 			lua_pop(L, 2);
-		int rc = luaL_merger_source_table_fetch(source, last_tuple);
+		int rc = luaL_merger_source_table_fetch(source);
 		if (rc != 0)
 			return -1;
 		/*
@@ -689,7 +687,6 @@ luaL_merger_source_table_next(struct merger_source *base,
 	if (base->tuple == NULL)
 		return -1;
 	++source->next_idx;
-	++base->processed;
 	lua_pop(L, 2);
 
 	box_tuple_ref(base->tuple);
@@ -705,10 +702,18 @@ static int
 lbox_merger_new_table_source(struct lua_State *L)
 {
 	const char *func_name = "merger.new_table_source";
-	if (lua_gettop(L) != 1 || !luaL_iscallable(L, 1))
-		return luaL_error(L, "Usage: %s(<function>)", func_name);
+	int top = lua_gettop(L);
+	if (top < 1 || top > 3 || !luaL_iscallable(L, 1))
+		return luaL_error(L, "Usage: %s(gen, param, state)", func_name);
 
-	struct merger_source *base = luaL_merger_source_table_new(L, 1);
+	/*
+	 * luaL_merger_source_table_new() reads exactly three top
+	 * values.
+	 */
+	while (lua_gettop(L) < 3)
+		lua_pushnil(L);
+
+	struct merger_source *base = luaL_merger_source_table_new(L);
 	if (base == NULL)
 		return luaT_error(L);
 	merger_source_ref(base);
@@ -728,10 +733,10 @@ lbox_merger_new_table_source(struct lua_State *L)
 struct merger_source_iterator {
 	struct merger_source base;
 	/*
-	 * A reference to a Lua function to fetch a next chunk of
+	 * A reference to a Lua iterator to fetch a next chunk of
 	 * tuples.
 	 */
-	int fetch_ref;
+	struct luaL_iterator *fetch_it;
 	/*
 	 * A Lua iterator on a current chunk of tuples.
 	 */
@@ -754,7 +759,7 @@ luaL_merger_source_iterator_next(struct merger_source *base,
  * In case of an error it returns NULL and set a diag.
  */
 static struct merger_source *
-luaL_merger_source_iterator_new(struct lua_State *L, int fetch_idx)
+luaL_merger_source_iterator_new(struct lua_State *L)
 {
 	static struct merger_source_vtab merger_source_iterator_vtab = {
 		.delete = luaL_merger_source_iterator_delete,
@@ -771,13 +776,11 @@ luaL_merger_source_iterator_new(struct lua_State *L, int fetch_idx)
 		return NULL;
 	}
 
-	source->base.processed = 0;
 	source->base.tuple = NULL;
 	/* source->base.hnode does not need to be initialized. */
 	source->base.refs = 0;
 
-	lua_pushvalue(L, fetch_idx); /* Popped by luaL_ref(). */
-	source->fetch_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	source->fetch_it = luaL_iterator_new(L, 0);
 
 	source->it = NULL;
 
@@ -791,33 +794,35 @@ luaL_merger_source_iterator_new(struct lua_State *L, int fetch_idx)
  * Return 0 at success and -1 at error (set a diag).
  */
 static int
-luaL_merger_source_iterator_fetch(struct merger_source_iterator *source,
-				  struct tuple *last_tuple)
+luaL_merger_source_iterator_fetch(struct merger_source_iterator *source)
 {
 	struct lua_State *L = fiber()->storage.lua.stack;
-	/* Push fetch callback. */
-	lua_rawgeti(L, LUA_REGISTRYINDEX, source->fetch_ref);
-	/* Push last_tuple, processed. */
-	if (last_tuple == NULL)
-		lua_pushnil(L);
-	else
-		luaT_pushtuple(L, last_tuple);
-	lua_pushinteger(L, source->base.processed);
-	/* Invoke the callback and process data. */
-	if (luaT_call(L, 2, 3) != 0)
-		return -1;
+	int nresult = luaL_iterator_next(L, source->fetch_it);
+
 	/* No more data: do nothing. */
-	if (lua_isnil(L, -3)) {
-		lua_pop(L, 3);
+	if (nresult == 0)
 		return 0;
+
+	/* Handle incorrect results count. */
+	if (nresult < 2 || nresult > 4) {
+		diag_set(IllegalParams, "Expected <state>, <gen>, <param>, "
+			 "<state> got %d return values", nresult);
+		return -1;
 	}
-	/* Set the new iterator as the source. */
+
+	/* luaL_iterator_new() reads exactly three top values. */
+	int nils = 0;
+	for (nils = 0; nils < 4 - nresult; ++nils)
+		lua_pushnil(L);
+
+	/* Set a new iterator as the current chunk. */
 	if (source->it != NULL)
 		luaL_iterator_delete(source->it);
 	source->it = luaL_iterator_new(L, 0);
-	lua_pop(L, 3);
+	lua_pop(L, nresult + nils);
 	if (source->it == NULL)
 		return -1;
+
 	return 0;
 }
 
@@ -829,8 +834,8 @@ luaL_merger_source_iterator_delete(struct merger_source *base)
 	struct merger_source_iterator *source = container_of(base,
 		struct merger_source_iterator, base);
 
-	assert(source->fetch_ref > 0);
-	luaL_unref(tarantool_L, LUA_REGISTRYINDEX, source->fetch_ref);
+	assert(source->fetch_it != NULL);
+	luaL_iterator_delete(source->fetch_it);
 
 	if (source->it != NULL)
 		luaL_iterator_delete(source->it);
@@ -849,7 +854,6 @@ luaL_merger_source_iterator_next(struct merger_source *base,
 	struct merger_source_iterator *source = container_of(base,
 		struct merger_source_iterator, base);
 
-	struct tuple *last_tuple = base->tuple;
 	base->tuple = NULL;
 
 	int nresult = 0;
@@ -859,7 +863,7 @@ luaL_merger_source_iterator_next(struct merger_source *base,
 	 * If all data were processed, try to fetch more.
 	 */
 	if (nresult == 0) {
-		int rc = luaL_merger_source_iterator_fetch(source, last_tuple);
+		int rc = luaL_merger_source_iterator_fetch(source);
 		if (rc != 0)
 			return -1;
 		/*
@@ -875,7 +879,6 @@ luaL_merger_source_iterator_next(struct merger_source *base,
 	base->tuple = luaT_tuple_new(L, -nresult + 1, format);
 	if (base->tuple == NULL)
 		return -1;
-	++base->processed;
 	lua_pop(L, nresult);
 
 	box_tuple_ref(base->tuple);
@@ -891,10 +894,18 @@ static int
 lbox_merger_new_iterator_source(struct lua_State *L)
 {
 	const char *func_name = "merger.new_iterator_source";
-	if (lua_gettop(L) != 1 || !luaL_iscallable(L, 1))
-		return luaL_error(L, "Usage: %s(<function>)", func_name);
+	int top = lua_gettop(L);
+	if (top < 1 || top > 3 || !luaL_iscallable(L, 1))
+		return luaL_error(L, "Usage: %s(gen, param, state)", func_name);
 
-	struct merger_source *base = luaL_merger_source_iterator_new(L, 1);
+	/*
+	 * luaL_merger_source_iterator_new() reads exactly three
+	 * top values.
+	 */
+	while (lua_gettop(L) < 3)
+		lua_pushnil(L);
+
+	struct merger_source *base = luaL_merger_source_iterator_new(L);
 	if (base == NULL)
 		return luaT_error(L);
 	merger_source_ref(base);

@@ -47,11 +47,11 @@ end
 
 local bad_source_new_calls = {
     {
-        'Bad fetch function',
+        'Bad fetch iterator',
         funcs = {'new_buffer_source', 'new_table_source',
                  'new_iterator_source'},
         params = {1},
-        exp_err = '^Usage: merger%.[a-z_]+%(<function>%)$',
+        exp_err = '^Usage: merger%.[a-z_]+%(gen, param, state%)$',
     },
     {
         'Bad chunk type',
@@ -60,7 +60,7 @@ local bad_source_new_calls = {
         exp_err = '^Usage: merger%.[a-z_]+%(<.+>%)$',
     },
     {
-        'Bad buffer',
+        'Bad buffer chunk',
         funcs = {'new_source_frombuffer'},
         params = {ffi.new('char *')},
         exp_err = '^Usage: merger%.[a-z_]+%(<cdata<struct ibuf>>%)$',
@@ -274,64 +274,35 @@ local function lowercase_unicode_ci_fields(tuples, parts)
     end
 end
 
-local function fetch_source_new(idx, schema, tuples, input_type)
-    return setmetatable({
-        schema = schema,
-        tuples = tuples,
-        input_type = input_type,
-        idx = idx,
-        last_pos = 0,
-    }, {
-        __call = function(self, last_tuple, processed)
-            local schema = self.schema
-            local tuples = self.tuples
-            local input_type = self.input_type
-            local idx = self.idx
-            local last_pos = self.last_pos
-            local exp_last_tuple = tuples[idx][last_pos]
-            assert((last_tuple == nil and exp_last_tuple == nil) or
-                tuple_comparator(last_tuple, exp_last_tuple,
-                schema.parts) == 0)
-            assert(last_pos == processed)
-            local data = fun.iter(tuples[idx]):drop(last_pos):take(
-                FETCH_BLOCK_SIZE):totable()
-            assert(#data > 0 or processed == #tuples[idx])
-            self.last_pos = last_pos + #data
-            if input_type == 'table' then
-                return data
-            elseif input_type == 'buffer' then
-                local buf = buffer.ibuf()
-                msgpackffi.internal.encode_r(buf, data, 0)
-                return buf
-            elseif input_type == 'iterator' then
-                return fun.iter(data)
-            else
-                assert(false)
-            end
-        end
-    })
+local function fetch_source_gen(param, state)
+    local input_type = param.input_type
+    local tuples = param.tuples
+    local last_pos = state.last_pos
+    local data = fun.iter(tuples):drop(last_pos):take(
+        FETCH_BLOCK_SIZE):totable()
+    local new_state = {last_pos = last_pos + #data}
+    if input_type == 'table' then
+        return new_state, data
+    elseif input_type == 'buffer' then
+        local buf = buffer.ibuf()
+        msgpackffi.internal.encode_r(buf, data, 0)
+        return new_state, buf
+    elseif input_type == 'iterator' then
+        return new_state, fun.iter(data)
+    else
+        assert(false)
+    end
 end
 
-local function gen_fetch_source(schema, tuples, opts)
-    local opts = opts or {}
-    local input_type = opts.input_type
-    local sources_cnt = #tuples
-
-    local sources = {}
-    for i = 1, sources_cnt do
-        if input_type == 'buffer' then
-            sources[i] = merger.new_buffer_source(fetch_source_new(i, schema,
-                tuples, input_type))
-        elseif input_type == 'table' then
-            sources[i] = merger.new_table_source(fetch_source_new(i, schema,
-                tuples, input_type))
-        elseif input_type == 'iterator' then
-            sources[i] = merger.new_iterator_source(fetch_source_new(i, schema,
-                tuples, input_type))
-        end
-    end
-
-    return sources
+local function fetch_source_iterator(input_type, tuples)
+    local param = {
+        input_type = input_type,
+        tuples = tuples,
+    }
+    local state = {
+        last_pos = 0,
+    }
+    return fetch_source_gen, param, state
 end
 
 local function prepare_data(schema, tuples_cnt, sources_cnt, opts)
@@ -374,7 +345,12 @@ local function prepare_data(schema, tuples_cnt, sources_cnt, opts)
     -- Fill sources.
     local sources
     if use_fetch_source then
-        sources = gen_fetch_source(schema, tuples, opts)
+        sources = {}
+        for i = 1, sources_cnt do
+            local func = ('new_%s_source'):format(input_type)
+            sources[i] = merger[func](fetch_source_iterator(input_type,
+                tuples[i]))
+        end
     elseif input_type == 'table' then
         -- Imitate netbox's select w/o {buffer = ...}.
         sources = {}
@@ -499,7 +475,6 @@ local function run_case(test, schema, opts)
 
     local input_type = opts.input_type
     local use_table_as_tuple = opts.use_table_as_tuple
-    local use_fetch_source = opts.use_fetch_source
 
     -- Skip meaningless flags combinations.
     if input_type == 'buffer' and not use_table_as_tuple then
