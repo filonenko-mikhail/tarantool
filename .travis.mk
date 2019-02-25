@@ -98,7 +98,7 @@ run_test_ubuntu:
 	file="test_$(subst /,_,${TEST}).log" ; \
 	sfile="/tarantool_ws/$$file" ; \
 	cd test && /usr/bin/python test-run.py -j 1 ${TEST} \
-		>$$file 2>&1 \
+		>$$sfile 2>&1 \
 		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$sfile | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; cp -f $$sfile /tarantool/. ; exit 1 )
         
