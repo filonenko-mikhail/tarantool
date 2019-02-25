@@ -27,7 +27,10 @@ docker_common:
 		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE} \
-		/bin/bash -c "cp -rfp /tarantool /tarantool_ws && cd /tarantool_ws && make -f .travis.mk $(subst docker_,,${TYPE}) || exit 1"
+		/bin/bash -c "cp -rfp /tarantool /tarantool_ws \
+			&& cd /tarantool_ws \
+			&& make -f .travis.mk $(subst docker_,,${TYPE}) \
+			|| exit 1"
 	docker tag ${DOCKER_IMAGE} ${DOCKER_IMAGE}_tmp
 	docker commit built_container_${TRAVIS_JOB_ID} ${DOCKER_IMAGE}_tmp
 	docker rm -f built_container_${TRAVIS_JOB_ID}
@@ -46,7 +49,8 @@ docker_common:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) || exit 1" \
+				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) \
+					|| exit 1" \
 				&& passed=$$(($$passed+1)) \
 				|| failed=$$(($$failed+1)) ; \
 		done ; \
@@ -72,7 +76,9 @@ deps_ubuntu:
 	sudo apt-get update \
 		>/tarantool/apt_update.log 2>&1 \
 		&& echo "APT update PASSED" \
-		|| ( echo "APT update FAILED" ; cat /tarantool/apt_update.log ; exit 1 )
+		|| ( echo "APT update FAILED" ; \
+			cat /tarantool/apt_update.log ; \
+			exit 1 )
 	sudo apt-get install -y -f \
 		build-essential cmake coreutils sed \
 		libreadline-dev libncurses5-dev libyaml-dev libssl-dev \
@@ -82,25 +88,35 @@ deps_ubuntu:
 		lcov ruby \
 		>/tarantool/apt_install.log 2>&1 \
 		&& echo "APT install PASSED" \
-		|| ( echo "APT install FAILED" ; cat /tarantool/apt_install.log ; exit 1 )
+		|| ( echo "APT install FAILED" ; \
+			cat /tarantool/apt_install.log ; \
+			exit 1 )
 
 test_ubuntu: deps_ubuntu
 	cmake . -DCMAKE_BUILD_TYPE=RelWithDebInfoWError ${CMAKE_EXTRA_PARAMS} \
 		>/tarantool/cmake.log 2>&1 \
 		&& echo "CMAKE PASSED" \
-		|| ( echo "CMAKE FAILED" ; cat /tarantool/cmake.log ; exit 1 )
+		|| ( echo "CMAKE FAILED" ; \
+			cat /tarantool/cmake.log ; \
+			exit 1 )
 	make -j \
 		>/tarantool/make.log 2>&1 \
 		&& echo "MAKE PASSED" \
-		|| ( echo "MAKE FAILED" ; cat /tarantool/make.log ; exit 1 )
+		|| ( echo "MAKE FAILED" ; \
+			cat /tarantool/make.log ; \
+			exit 1 )
 
 run_test_ubuntu:
 	file="test_$(subst /,_,${TEST}).log" ; \
 	sfile="/tarantool_ws/$$file" ; \
 	cd test && /usr/bin/python test-run.py -j 1 ${TEST} \
 		>$$sfile 2>&1 \
-		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$sfile | grep -v Statistics ) \
-		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; cp -f $$sfile /tarantool/. ; exit 1 )
+		&& ( echo "TEST(${TEST}) PASSED" ; \
+			grep "Statistics:" -A1000 $$sfile | grep -v Statistics ) \
+		|| ( echo "TEST(${TEST}) FAILED" ; \
+			cat $$file ; \
+			cp -f $$sfile /tarantool/. ; \
+			exit 1 )
         
 deps_osx:
 	brew update
@@ -127,19 +143,29 @@ coverage_ubuntu: deps_ubuntu
 	cmake . -DCMAKE_BUILD_TYPE=Debug -DENABLE_GCOV=ON \
 		>/tarantool/cmake.log 2>&1 \
 		&& echo "CMAKE PASSED" \
-		|| ( echo "CMAKE FAILED" ; cat /tarantool/cmake.log ; exit 1 )
+		|| ( echo "CMAKE FAILED" ; \
+			cat /tarantool/cmake.log ; \
+			exit 1 )
 	make -j \
 		>/tarantool/make.log 2>&1 \
 		&& echo "MAKE PASSED" \
-		|| ( echo "MAKE FAILED" ; cat /tarantool/make.log ; exit 1 )
+		|| ( echo "MAKE FAILED" ; \
+			cat /tarantool/make.log ; \
+			exit 1 )
 
 run_coverage_ubuntu:
 	# Enable --long tests for coverage
-	file="/tarantool/test_$(subst /,_,${TEST}).log" ; \
+	file="test_$(subst /,_,${TEST}).log" ; \
+	sfile="/tarantool_ws/$$file" ; \
 	cd test && /usr/bin/python test-run.py -j 1 --long ${TEST} \
 		>$$file 2>&1 \
-		&& ( echo "TEST(${TEST}) PASSED" ; grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
-		|| ( echo "TEST(${TEST}) FAILED" ; cat $$file ; exit 1 )
+		&& ( rsync -aunv /tarantool_ws /tarantool \
+			echo "TEST(${TEST}) PASSED" ; \
+			grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
+		|| ( echo "TEST(${TEST}) FAILED" ; \
+			cat $$file ; \
+			cp -f $$sfile /tarantool/. ; \
+			exit 1 )
 
 docker_coverage_ubuntu: docker_common
 	# post test stage
