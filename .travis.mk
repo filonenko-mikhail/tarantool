@@ -85,7 +85,7 @@ deps_ubuntu:
 		libcurl4-openssl-dev libunwind-dev libicu-dev \
 		python python-pip python-setuptools python-dev \
 		python-msgpack python-yaml python-argparse python-six python-gevent \
-		lcov ruby \
+		lcov ruby rsync \
 		>/tarantool/apt_install.log 2>&1 \
 		&& echo "APT install PASSED" \
 		|| ( echo "APT install FAILED" ; \
