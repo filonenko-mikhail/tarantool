@@ -146,10 +146,7 @@ docker_coverage_ubuntu: docker_common
 	docker run \
 		--rm=true --tty=true \
 		--volume "${PWD}:/tarantool" \
-		--volume "${HOME}/.cache:/cache" \
-		--workdir /tarantool \
-		-e XDG_CACHE_HOME=/cache \
-		-e CCACHE_DIR=/cache/ccache \
+		--workdir /tarantool_ws \
 		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE}_tmp \
