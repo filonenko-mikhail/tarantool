@@ -49,7 +49,7 @@ docker_common:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) \
+				/bin/bash -c "make -f .travis.mk $(subst docker_,run_,${TYPE}) \
 					|| exit 1" \
 				&& passed=$$(($$passed+1)) \
 				|| failed=$$(($$failed+1)) ; \
@@ -159,7 +159,7 @@ run_coverage_ubuntu:
 	sfile="/tarantool_ws/$$file" ; \
 	cd test && /usr/bin/python test-run.py -j 1 --long ${TEST} \
 		>$$file 2>&1 \
-		&& ( rsync -aunv /tarantool_ws /tarantool >/dev/null 2>&1 ; \
+		&& ( rsync -auq /tarantool_ws /tarantool >/dev/null 2>&1 ; \
 			echo "TEST(${TEST}) PASSED" ; \
 			grep "Statistics:" -A1000 $$file | grep -v Statistics ) \
 		|| ( echo "TEST(${TEST}) FAILED" ; \
