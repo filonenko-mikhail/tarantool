@@ -172,7 +172,7 @@ docker_coverage_ubuntu: docker_common
 	docker run \
 		--rm=true --tty=true \
 		--volume "${PWD}:/tarantool" \
-		--workdir /tarantool_ws \
+		--workdir /tarantool \
 		-e COVERALLS_TOKEN=${COVERALLS_TOKEN} \
 		-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 		${DOCKER_IMAGE}_tmp \
