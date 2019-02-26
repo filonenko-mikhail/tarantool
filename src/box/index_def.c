@@ -245,11 +245,12 @@ index_def_cmp(const struct index_def *key1, const struct index_def *key2)
 }
 
 /**
- * Test whether key_parts a and b are compatible:
+ * Test whether key_parts a and b are compatible.
+ * Parts are compatible if:
  *  + field numbers are differ OR
- *  + json paths are differ
- * Also perform integrity check: parts must not define multikey
- * index.
+ *  + json paths are differ OR
+ *  + multikey indexes JSON_TOKEN_ANY tokens are at the same
+ *    positions in both paths.
  */
 static bool
 key_parts_are_compatible(struct key_part *a, struct key_part *b,
@@ -280,13 +281,23 @@ key_parts_are_compatible(struct key_part *a, struct key_part *b,
 			a_multikey_rank = token_idx;
 		if (token_b.type == JSON_TOKEN_ANY)
 			b_multikey_rank = token_idx;
+		if (differ_token_idx > 0 &&
+		    (differ_token_idx <= a_multikey_rank ||
+		     differ_token_idx <= b_multikey_rank)) {
+			diag_set(ClientError, ER_MODIFY_INDEX,
+				 index_def->name, space_name,
+				 "multikey index parts incompatible");
+			return false;
+		}
 	}
-	if (a_multikey_rank > 0 || b_multikey_rank > 0) {
+	if (a_multikey_rank > 1 || b_multikey_rank > 1) {
 		diag_set(ClientError, ER_MODIFY_INDEX,
 			 index_def->name, space_name,
-			 "multikey index feature is not supported yet");
+			 "no more than one * placeholder is supported");
 		return false;
 	}
+	a->is_multikey = a_multikey_rank > 0;
+	b->is_multikey = b_multikey_rank > 0;
 	if (differ_token_idx > 0 || token_b.type != token_a.type)
 		return true;
 	diag_set(ClientError, ER_MODIFY_INDEX, index_def->name, space_name,
@@ -335,6 +346,8 @@ index_def_is_valid(struct index_def *index_def, const char *space_name)
 			if (!key_parts_are_compatible(part_a, part_b, index_def,
 						      space_name))
 				return false;
+			index_def->key_def->has_multikey_parts |=
+				part_b->is_multikey;
 		}
 	}
 	return true;

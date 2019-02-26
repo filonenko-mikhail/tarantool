@@ -111,6 +111,10 @@ struct key_part {
 	 * offset corresponding to the last used tuple format.
 	 */
 	int32_t offset_slot_cache;
+	/**
+	 * True when key part contains array index placeholder *.
+	 */
+	bool is_multikey;
 };
 
 struct key_def;
@@ -128,6 +132,18 @@ key_part_is_nullable(const struct key_part *part)
 	return part->nullable_action == ON_CONFLICT_ACTION_NONE;
 }
 
+/** @copydoc tuple_compare_with_key_multikey() */
+typedef int (*tuple_compare_with_key_multikey_t)(const struct tuple *tuple,
+						 uint32_t multikey_idx,
+						 const char *key,
+						 uint32_t part_count,
+						 struct key_def *key_def);
+/** @copydoc tuple_compare_multikey() */
+typedef int (*tuple_compare_multikey_t)(const struct tuple *tuple_a,
+					uint32_t multikey_idx_a,
+					const struct tuple *tuple_b,
+					uint32_t multikey_idx_b,
+					struct key_def *key_def);
 /** @copydoc tuple_compare_with_key() */
 typedef int (*tuple_compare_with_key_t)(const struct tuple *tuple_a,
 					const char *key,
@@ -166,6 +182,10 @@ struct key_def {
 	tuple_compare_t tuple_compare;
 	/** @see tuple_compare_with_key() */
 	tuple_compare_with_key_t tuple_compare_with_key;
+	/** @see tuple_compare_multikey() */
+	tuple_compare_multikey_t tuple_compare_multikey;
+	/** @see tuple_compare_with_key_multikey() */
+	tuple_compare_with_key_multikey_t tuple_compare_with_key_multikey;
 	/** @see tuple_extract_key() */
 	tuple_extract_key_t tuple_extract_key;
 	/** @see tuple_extract_key_raw() */
@@ -190,6 +210,8 @@ struct key_def {
 	bool is_nullable;
 	/** True if some key part has JSON path. */
 	bool has_json_paths;
+	/** True if some part has array index placeholder *. */
+	bool has_multikey_parts;
 	/**
 	 * True, if some key parts can be absent in a tuple. These
 	 * fields assumed to be MP_NIL.
@@ -580,6 +602,47 @@ tuple_compare_with_key(const struct tuple *tuple, const char *key,
 		       uint32_t part_count, struct key_def *key_def)
 {
 	return key_def->tuple_compare_with_key(tuple, key, part_count, key_def);
+}
+
+/**
+ * Compare tuples using the key definition and multikey_idx hint.
+ * @param tuple_a first tuple
+ * @param tuple_b second tuple
+ * @param key_def key definition
+ * @param multikey_idx multikey index hint
+ * @retval 0  if key_fields(tuple_a) == key_fields(tuple_b)
+ * @retval <0 if key_fields(tuple_a) < key_fields(tuple_b)
+ * @retval >0 if key_fields(tuple_a) > key_fields(tuple_b)
+ */
+static inline int
+tuple_compare_multikey(const struct tuple *tuple_a, uint32_t multikey_idx_a,
+		       const struct tuple *tuple_b, uint32_t multikey_idx_b,
+		       struct key_def *key_def)
+{
+	return key_def->tuple_compare_multikey(tuple_a, multikey_idx_a, tuple_b,
+					       multikey_idx_b, key_def);
+}
+
+/**
+ * @brief Compare tuple with key using the key definition and
+ * multikey_idx hint.
+ * @param tuple tuple
+ * @param key key parts without MessagePack array header
+ * @param part_count the number of parts in @a key
+ * @param key_def key definition
+ * @param multikey_idx multikey index hint
+ * @retval 0  if key_fields(tuple) == parts(key)
+ * @retval <0 if key_fields(tuple) < parts(key)
+ * @retval >0 if key_fields(tuple) > parts(key)
+ */
+static inline int
+tuple_compare_with_key_multikey(const struct tuple *tuple,
+				uint32_t multikey_idx, const char *key,
+				uint32_t part_count, struct key_def *key_def)
+{
+	return key_def->tuple_compare_with_key_multikey(tuple, multikey_idx,
+							key, part_count,
+							key_def);
 }
 
 /**

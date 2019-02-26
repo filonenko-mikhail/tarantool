@@ -245,6 +245,17 @@ tuple_format_add_field(struct tuple_format *format, uint32_t fieldno,
 				 field_type_strs[expected_type]);
 			goto fail;
 		}
+		if (field->token.type == JSON_TOKEN_ANY &&
+		    !parent->token.is_multikey &&
+		    !json_token_is_leaf(&parent->token)) {
+			const char *multikey_type =
+				tt_sprintf("multikey %s",
+					   field_type_strs[expected_type]);
+			diag_set(ClientError, ER_INDEX_PART_TYPE_MISMATCH,
+				 tuple_field_path(parent),
+				 field_type_strs[parent->type], multikey_type);
+			goto fail;
+		}
 		struct tuple_field *next =
 			json_tree_lookup_entry(tree, &parent->token,
 					       &field->token,
@@ -470,9 +481,8 @@ tuple_format_create(struct tuple_format *format, struct key_def * const *keys,
 					break;
 				format->min_tuple_size += mp_sizeof_nil();
 			}
-		} else {
+		} else if (field->token.type == JSON_TOKEN_STR) {
 			/* Account a key string for map member. */
-			assert(field->token.type == JSON_TOKEN_STR);
 			format->min_tuple_size +=
 				mp_sizeof_str(field->token.len);
 		}

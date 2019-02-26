@@ -692,17 +692,49 @@ s = box.schema.space.create('withdata')
 idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[1].a'}, {3, 'str', path = '["FIO"][*]["fname"][*].b'}}})
 ---
 - error: 'Can''t create or modify index ''idx'' in space ''withdata'': multikey index
-    feature is not supported yet'
+    parts incompatible'
 ...
 idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[*].a'}, {3, 'str', path = '["FIO"][*]["fname"][*].b'}}})
 ---
-- error: 'Can''t create or modify index ''idx'' in space ''withdata'': multikey index
-    feature is not supported yet'
+- error: 'Can''t create or modify index ''idx'' in space ''withdata'': no more than
+    one * placeholder is supported'
 ...
 idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[1].a'}, {3, 'str', path = '["FIO"][*]["fname"][2].b'}}})
 ---
-- error: 'Can''t create or modify index ''idx'' in space ''withdata'': multikey index
-    feature is not supported yet'
+- error: 'Can''t create or modify index ''idx'' in space ''withdata'': no more than
+    one * placeholder is supported'
+...
+s:drop()
+---
+...
+s = box.schema.space.create('withdata')
+---
+...
+idx = s:create_index('test2', {parts = {{1, 'str', path = '[*].fname'}, {1, 'str', path = '[*]["sname"]'}}})
+---
+...
+ idx:get({'Kirill', 'Shcherbatov'}, {'Vasya', 'Pupkin'})
+---
+...
+s:insert({{{fname='James', sname='Bond'}, {fname='Vasya', sname='Pupkin'}}})
+---
+- [[{'fname': 'James', 'sname': 'Bond'}, {'fname': 'Vasya', 'sname': 'Pupkin'}]]
+...
+s:insert({{{fname='Ivan', sname='Ivanych'}}})
+---
+- [[{'fname': 'Ivan', 'sname': 'Ivanych'}]]
+...
+idx:select({'James', 'Bond'})
+---
+- - [[{'fname': 'James', 'sname': 'Bond'}, {'fname': 'Vasya', 'sname': 'Pupkin'}]]
+...
+idx:select({'Kirill', 'Shcherbatov'})
+---
+- []
+...
+idx:select({'Ivan', 'Ivanych'})
+---
+- - [[{'fname': 'Ivan', 'sname': 'Ivanych'}]]
 ...
 s:drop()
 ---

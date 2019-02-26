@@ -506,11 +506,31 @@ tuple_field_count(const struct tuple *tuple)
  *                      with NULL.
  * @param path The path to process.
  * @param path_len The length of the @path.
+ * @param multikey_index The multikey index hint - index of item
+ *                       for JSON_TOKEN_ANY level.
  * @retval 0 On success.
  * @retval -1 In case of error in JSON path.
  */
 int
-tuple_go_to_path(const char **data, const char *path, uint32_t path_len);
+tuple_go_to_path_multikey(const char **data, const char *path,
+			  uint32_t path_len, int multikey_idx);
+
+/**
+ * Retrieve msgpack data by JSON path.
+ * @param data[in, out] Pointer to msgpack with data.
+ *                      If the field cannot be retrieved be the
+ *                      specified path @path, it is overwritten
+ *                      with NULL.
+ * @param path The path to process.
+ * @param path_len The length of the @path.
+ * @retval 0 On success.
+ * @retval -1 In case of error in JSON path.
+ */
+static inline int
+tuple_go_to_path(const char **data, const char *path, uint32_t path_len)
+{
+	return tuple_go_to_path_multikey(data, path, path_len, -1);
+}
 
 /**
  * Get tuple field by field index and relative JSON path.
@@ -668,6 +688,47 @@ tuple_field_by_part(const struct tuple *tuple, struct key_part *part)
 {
 	return tuple_field_raw_by_part(tuple_format(tuple), tuple_data(tuple),
 				       tuple_field_map(tuple), part);
+}
+
+/**
+ * Get a tuple field pointed to by an index part and multikey hint.
+ * @param format Tuple format.
+ * @param tuple A pointer to MessagePack array.
+ * @param field_map A pointer to the LAST element of field map.
+ * @param multikey_idx A multikey hint.
+ * @param part Index part to use.
+ * @retval Field data if the field exists or NULL.
+ */
+static inline const char *
+tuple_field_raw_by_part_multikey(struct tuple_format *format, const char *data,
+				 const uint32_t *field_map,
+				 struct key_part *part, int multikey_idx)
+{
+	const char *field = tuple_field_raw(format, data, field_map,
+					    part->fieldno);
+	if (field == NULL)
+		return NULL;
+	if (tuple_go_to_path_multikey(&field, part->path, part->path_len,
+				      multikey_idx) != 0)
+		return NULL;
+	return field;
+}
+
+/**
+ * Get a field refereed by index @part and multikey hint in tuple.
+ * @param tuple Tuple to get the field from.
+ * @param part Index part to use.
+ * @param multikey_idx A multikey hint.
+ * @retval Field data if the field exists or NULL.
+ */
+static inline const char *
+tuple_field_by_part_multikey(const struct tuple *tuple, struct key_part *part,
+			     int multikey_idx)
+{
+	return tuple_field_raw_by_part_multikey(tuple_format(tuple),
+						tuple_data(tuple),
+						tuple_field_map(tuple), part,
+						multikey_idx);
 }
 
 /**

@@ -1323,9 +1323,152 @@ tuple_compare_with_key_create(const struct key_def *def)
 
 /* }}} tuple_compare_with_key */
 
+template<bool is_nullable, bool has_optional_parts>
+static inline int
+tuple_compare_multikey(const struct tuple *tuple_a, uint32_t multikey_idx_a,
+		       const struct tuple *tuple_b, uint32_t multikey_idx_b,
+		       struct key_def *key_def)
+{
+	struct key_part *part = key_def->parts;
+	const char *tuple_a_raw = tuple_data(tuple_a);
+	const char *tuple_b_raw = tuple_data(tuple_b);
+	bool was_null_met = false;
+	struct tuple_format *format_a = tuple_format(tuple_a);
+	struct tuple_format *format_b = tuple_format(tuple_b);
+	const uint32_t *field_map_a = tuple_field_map(tuple_a);
+	const uint32_t *field_map_b = tuple_field_map(tuple_b);
+	struct key_part *end;
+	const char *field_a, *field_b;
+	enum mp_type a_type, b_type;
+	int rc;
+	if (is_nullable)
+		end = part + key_def->unique_part_count;
+	else
+		end = part + key_def->part_count;
+
+	for (; part < end; part++) {
+		field_a = tuple_field_raw_by_part_multikey(format_a, tuple_a_raw,
+				field_map_a, part, multikey_idx_a);
+		field_b = tuple_field_raw_by_part_multikey(format_b, tuple_b_raw,
+				field_map_b, part, multikey_idx_b);
+		assert(has_optional_parts ||
+		       (field_a != NULL && field_b != NULL));
+		if (! is_nullable) {
+			rc = tuple_compare_field(field_a, field_b, part->type,
+						 part->coll);
+			if (rc != 0)
+				return rc;
+			else
+				continue;
+		}
+		if (has_optional_parts) {
+			a_type = field_a != NULL ? mp_typeof(*field_a) : MP_NIL;
+			b_type = field_b != NULL ? mp_typeof(*field_b) : MP_NIL;
+		} else {
+			a_type = mp_typeof(*field_a);
+			b_type = mp_typeof(*field_b);
+		}
+		if (a_type == MP_NIL) {
+			if (b_type != MP_NIL)
+				return -1;
+			was_null_met = true;
+		} else if (b_type == MP_NIL) {
+			return 1;
+		} else {
+			rc = tuple_compare_field_with_hint(field_a, a_type,
+							   field_b, b_type,
+							   part->type,
+							   part->coll);
+			if (rc != 0)
+				return rc;
+		}
+	}
+	/*
+	 * Do not use full parts set when no NULLs. It allows to
+	 * simulate a NULL != NULL logic in secondary keys,
+	 * because in them full parts set contains unique primary
+	 * key.
+	 */
+	if (!is_nullable || !was_null_met)
+		return 0;
+	/*
+	 * Inxex parts are equal and contain NULLs. So use
+	 * extended parts only.
+	 */
+	end = key_def->parts + key_def->part_count;
+	for (; part < end; ++part) {
+		field_a = tuple_field_raw_by_part_multikey(format_a, tuple_a_raw,
+				field_map_a, part, multikey_idx_a);
+		field_b = tuple_field_raw_by_part_multikey(format_b, tuple_b_raw,
+				field_map_b, part, multikey_idx_b);
+		/*
+		 * Extended parts are primary, and they can not
+		 * be absent or be NULLs.
+		 */
+		assert(field_a != NULL && field_b != NULL);
+		rc = tuple_compare_field(field_a, field_b, part->type,
+					 part->coll);
+		if (rc != 0)
+			return rc;
+	}
+	return 0;
+}
+
+template<bool is_nullable, bool has_optional_parts>
+static inline int
+tuple_compare_with_key_multikey(const struct tuple *tuple,
+				uint32_t multikey_idx, const char *key,
+				uint32_t part_count, struct key_def *key_def)
+{
+	assert(key != NULL || part_count == 0);
+	assert(part_count <= key_def->part_count);
+	struct key_part *part = key_def->parts;
+	struct tuple_format *format = tuple_format(tuple);
+	const char *tuple_raw = tuple_data(tuple);
+	const uint32_t *field_map = tuple_field_map(tuple);
+	enum mp_type a_type, b_type;
+	struct key_part *end = part + part_count;
+	int rc;
+	for (; part < end; ++part, mp_next(&key)) {
+		const char *field;
+		field = tuple_field_raw_by_part_multikey(format, tuple_raw,
+							 field_map, part,
+							 multikey_idx);
+		if (! is_nullable) {
+			rc = tuple_compare_field(field, key, part->type,
+						 part->coll);
+			if (rc != 0)
+				return rc;
+			else
+				continue;
+		}
+		if (has_optional_parts)
+			a_type = field != NULL ? mp_typeof(*field) : MP_NIL;
+		else
+			a_type = mp_typeof(*field);
+		b_type = mp_typeof(*key);
+		if (a_type == MP_NIL) {
+			if (b_type != MP_NIL)
+				return -1;
+		} else if (b_type == MP_NIL) {
+			return 1;
+		} else {
+			rc = tuple_compare_field_with_hint(field, a_type, key,
+							   b_type, part->type,
+							   part->coll);
+			if (rc != 0)
+				return rc;
+		}
+	}
+	return 0;
+}
+
 void
 key_def_set_compare_func(struct key_def *def)
 {
 	def->tuple_compare = tuple_compare_create(def);
 	def->tuple_compare_with_key = tuple_compare_with_key_create(def);
+	def->tuple_compare_multikey = tuple_compare_multikey<true, true>;
+	def->tuple_compare_with_key_multikey =
+		tuple_compare_with_key_multikey<true, true>;
 }

@@ -96,7 +96,8 @@
  *                     struct tuple *tuple,
  *                     struct key_def *key_def);
  */
-#ifndef MEMTX_TREE_ELEM_SET
+#if !defined(MEMTX_TREE_ELEM_SET) && \
+    (!defined(memtx_tree_index_replace) || !defined(memtx_tree_index_build_next))
 #error "MEMTX_TREE_ELEM_SET must be defined"
 #endif
 
@@ -224,10 +225,18 @@
 #define memtx_tree_index_get _api_name(index_get)
 #define memtx_tree_index_insert_tuple _api_name(index_insert_tuple)
 #define memtx_tree_index_delete_tuple _api_name(index_delete_tuple)
+#if !defined(memtx_tree_index_replace)
 #define memtx_tree_index_replace _api_name(index_replace)
+#else
+#define MEMTX_TREE_EXTERNAL_REPLACE 1
+#endif
 #define memtx_tree_index_create_iterator _api_name(index_create_iterator)
 #define memtx_tree_index_begin_build _api_name(index_begin_build)
+#if !defined(memtx_tree_index_build_next)
 #define memtx_tree_index_build_next _api_name(index_build_next)
+#else
+#define MEMTX_TREE_EXTERNAL_BUILD_NEXT 1
+#endif
 #define memtx_tree_index_reserve _api_name(index_reserve)
 #define memtx_tree_index_end_build _api_name(index_end_build)
 #define tree_snapshot_iterator _api_name(snapshot_iterator)
@@ -662,6 +671,7 @@ memtx_tree_index_get(struct index *base, const char *key,
 	return 0;
 }
 
+#ifndef MEMTX_TREE_EXTERNAL_REPLACE
 static int
 memtx_tree_index_insert_tuple(struct index *base, struct tuple *tuple,
 			      struct tuple **replaced)
@@ -726,6 +736,7 @@ memtx_tree_index_replace(struct index *base, struct tuple *old_tuple,
 	*result = old_tuple;
 	return 0;
 }
+#endif /* MEMTX_TREE_EXTERNAL_REPLACE */
 
 static struct iterator *
 memtx_tree_index_create_iterator(struct index *base, enum iterator_type type,
@@ -796,6 +807,7 @@ memtx_tree_index_reserve(struct index *base, uint32_t size_hint)
 	return 0;
 }
 
+#ifndef MEMTX_TREE_EXTERNAL_BUILD_NEXT
 static int
 memtx_tree_index_build_next(struct index *base, struct tuple *tuple)
 {
@@ -829,6 +841,7 @@ memtx_tree_index_build_next(struct index *base, struct tuple *tuple)
 	MEMTX_TREE_ELEM_SET(elem, tuple, memtx_tree_index_cmp_def(index));
 	return 0;
 }
+#endif /* MEMTX_TREE_EXTERNAL_BUILD_NEXT */
 
 static void
 memtx_tree_index_end_build(struct index *base)

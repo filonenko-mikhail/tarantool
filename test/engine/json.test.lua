@@ -201,3 +201,13 @@ idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[1].a'}, {3
 idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[*].a'}, {3, 'str', path = '["FIO"][*]["fname"][*].b'}}})
 idx = s:create_index('idx', {parts = {{3, 'str', path = 'FIO[*].fname[1].a'}, {3, 'str', path = '["FIO"][*]["fname"][2].b'}}})
 s:drop()
+
+s = box.schema.space.create('withdata')
+idx = s:create_index('test2', {parts = {{1, 'str', path = '[*].fname'}, {1, 'str', path = '[*]["sname"]'}}})
+ idx:get({'Kirill', 'Shcherbatov'}, {'Vasya', 'Pupkin'})
+s:insert({{{fname='James', sname='Bond'}, {fname='Vasya', sname='Pupkin'}}})
+s:insert({{{fname='Ivan', sname='Ivanych'}}})
+idx:select({'James', 'Bond'})
+idx:select({'Kirill', 'Shcherbatov'})
+idx:select({'Ivan', 'Ivanych'})
+s:drop()
