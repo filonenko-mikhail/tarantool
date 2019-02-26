@@ -49,7 +49,7 @@ docker_common:
 				-e TRAVIS_JOB_ID=${TRAVIS_JOB_ID} \
 				-e TEST=$$TEST \
 				${DOCKER_IMAGE}_tmp \
-				/bin/bash -c "make -f .travis.mk $(subst docker_,run_,${TYPE}) \
+				/bin/bash -c "make -s -f .travis.mk $(subst docker_,run_,${TYPE}) \
 					|| exit 1" \
 				&& passed=$$(($$passed+1)) \
 				|| failed=$$(($$failed+1)) ; \
