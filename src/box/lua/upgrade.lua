@@ -610,6 +610,7 @@ local function upgrade_to_2_1_0()
 
     box.space._collation:replace{0, "none", ADMIN, "BINARY", "", setmap{}}
     box.space._collation:replace{3, "binary", ADMIN, "BINARY", "", setmap{}}
+    box.space._collation:replace{4, "unicode_s2", ADMIN, "ICU", "ru_RU", {strength='secondary'}}
 
     upgrade_priv_to_2_1_0()
 end

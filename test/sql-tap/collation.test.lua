@@ -21,9 +21,10 @@ test:do_execsql_test(
         1,"unicode",
         2,"unicode_ci",
         3,"binary",
-        4,"unicode_numeric",
-        5,"unicode_numeric_s2",
-        6,"unicode_tur_s2"
+        4,"unicode_s2",
+        5,"unicode_numeric",
+        6,"unicode_numeric_s2",
+        7,"unicode_tur_s2"
     }
 )
 
